@@ -13,69 +13,92 @@
  *   6. Agent presents gap with honest confusions and asks user to validate
  */
 
-import { callMentorJson } from '../tools/gemini.js';
-import { searchArxiv } from '../tools/arxiv.js';
+import { callLLMJson as callMentorJson } from '../tools/llm.js';
+import { searchPapers } from '../tools/tavily.js';
 import { saveMessage, getConversation, savePaper, getPapers, saveHypothesis } from '../learnerMemory.js';
+import { withMentorContext, detectAndRecordMoments, recordMoment } from '../mentorPersona.js';
 
-const PROBE_SYSTEM_PROMPT = `You are a research mentor with 30 years of experience, reading a set of papers TOGETHER with a student to find where the open problem is. You are a thinking partner, not an examiner. The student should help shape the gap — but you carry your share of the thinking, the way a real advisor does across a table.
+const PROBE_SYSTEM_PROMPT = `You are a research mentor reading papers TOGETHER with a student. Thinking partner, not examiner.
 
-CRITICAL RULE: Ground everything in the specific papers by title. Never say "what do you notice?" in the abstract — point at the evidence: "Paper X assumes Y, but paper Z's setup violates that — that crack is interesting."
+RESPONSE FORMAT — always use this structure in your "message" field:
+- 1-2 short sentences reacting to what the student said
+- A "**What I'm seeing:**" block: 2-3 bullet points, each naming a specific paper title in **bold** and what it reveals
+- 1 sentence with your honest read ("My read: ...")
+- End with ONE short question (≤15 words)
 
-How to run each turn (this is a conversation, not a question loop):
-1. SYNTHESIZE: react to what the student just said and connect it across the papers — show the pattern you see forming. Don't restart from a fresh question each time.
-2. OFFER YOUR OWN READ: say what YOU think is going on, with honest confidence — "My read is that all three treat the input as clean; none handle the messy real-world case. I'd put ~70% on that being the real gap." Don't withhold your judgment to make them guess.
-3. INVITE PUSHBACK: end by giving them something concrete to agree with or challenge — "Does that land, or am I forcing a pattern that isn't there?" Make disagreement easy and welcome.
-Keep it to a few tight paragraphs. Be honest when papers contradict each other or when you're genuinely unsure — name it.
+RULES:
+1. Cite paper titles in **bold** always. Never vague ("one paper shows...").
+2. Keep it tight — 4-6 sentences total max. No walls of text.
+3. Your own opinion goes in "My read:" — don't hide it.
+4. End with a question that makes disagreement easy ("Does that track?" / "Am I off?").
+5. Once evidence supports a gap, set forming_gap: true and propose it — don't drag it out.
 
-Don't drag the discovery out over many tiny turns. Once the evidence supports a gap, propose it. Set forming_gap: true and populate gap_hypothesis.
-Every bullet in why_strong MUST name a specific paper title as evidence.
+EXAMPLE message format:
+"Right, that pattern stands out to me too.
+
+**What I'm seeing:**
+• **"Fine-grained Multi-Document Extraction"** splits commits syntactically — no semantic awareness of intent
+• **"Select-Then-Decompose"** picks split points adaptively but still requires human validation
+• **"Decomposition Strategies and Multi-shot ASP"** frames it as constraint satisfaction — closest to automated, but domain-specific
+
+My read: none of these guarantee the narrative thread survives the split. That's the gap.
+
+Does that match what you're seeing, or is there a paper I'm misreading?"
 
 Always respond with this JSON:
 {
-  "message": "your Socratic response — must cite paper titles",
+  "message": "formatted response following the structure above",
   "probe_type": "common_problem | solutions | tradeoffs | assumptions | gap | validating",
   "forming_gap": false,
   "gap_hypothesis": {
     "gap": "one sentence: what problem is not solved",
-    "why_strong": ["'Paper X' shows Y, which means...", "Papers A and B both assume Z but never test..."],
+    "why_strong": ["**'Paper X'** shows Y, which means...", "**Papers A and B** both assume Z but never test..."],
     "confusions": ["honest confusion citing specific papers"],
     "user_questions": ["question for user to validate or push back"]
   }
 }`;
 
-const SUMMARIZE_PAPERS_PROMPT = `You are a research mentor. For each paper write exactly 3 SHORT sentences (max 20 words each):
-1. What it does
-2. What it assumes
-3. What it claims is novel
+const SEARCH_AND_SUMMARIZE_PROMPT = `You are a research mentor. Given a domain and student idea, do two things at once:
 
-Be concrete. No filler. Return ONLY this JSON, nothing else:
+1. Pick the BEST single search query (3-6 plain keywords, no quotes or operators) to find relevant papers.
+2. For each paper provided, write exactly 3 SHORT sentences (max 20 words each):
+   - What it does
+   - What it assumes
+   - What it claims is novel
+
+Return JSON:
 {
+  "search_query": "best query string",
   "summaries": [
     { "arxiv_id": "...", "mentor_summary": "sentence1. sentence2. sentence3." }
   ]
 }`;
 
-export async function fetchAndSummarizePapers(learnerId, domain, query) {
-  // Fetch real papers from arxiv
-  const papers = await searchArxiv(query || domain, 6);
+export async function fetchAndSummarizePapers(learnerId, domain, idea) {
+  // Step 1: Use LLM to pick the best search query AND summarize results in one call.
+  // First do a broad Tavily search using the raw idea, then let LLM refine + summarize.
+  const rawQuery = `${idea || domain} research`.slice(0, 380); // Tavily 400-char limit
+  console.log(`[literatureDiscovery] Searching via Tavily: "${rawQuery}"`);
+
+  const papers = await searchPapers(rawQuery, 6);
 
   if (papers.length === 0) {
-    throw new Error(`No papers found on arxiv for: ${query || domain}`);
+    throw new Error(`No papers found for: ${idea || domain}`);
   }
 
-  // Get mentor summaries
-  const summaryResult = await callMentorJson({
+  // One LLM call: pick better query for future + summarize the papers we already have
+  const result = await callMentorJson({
     systemPrompt: 'You are a research mentor. Return only valid JSON.',
     history: [],
-    userMessage: `${SUMMARIZE_PAPERS_PROMPT}\n\nPapers:\n${papers.map((p, i) =>
-      `${i + 1}. [${p.arxiv_id}] "${p.title}" — Abstract: ${p.summary}`
-    ).join('\n\n')}`,
+    userMessage: `${SEARCH_AND_SUMMARIZE_PROMPT}\n\nDomain: ${domain}\nStudent idea: ${idea}\n\nPapers found:\n${
+      papers.map((p, i) => `${i + 1}. [${p.arxiv_id}] "${p.title}" — ${p.summary}`).join('\n\n')
+    }`,
     temperature: 0.2,
     requiredKeys: ['summaries']
   });
 
   const summaryMap = {};
-  for (const s of (summaryResult.summaries || [])) {
+  for (const s of (result.summaries || [])) {
     summaryMap[s.arxiv_id] = s.mentor_summary;
   }
 
@@ -109,17 +132,24 @@ export async function literatureDiscoveryTurn(learnerId, userMessage, turn) {
   ).join('\n\n')}`;
 
   const result = await callMentorJson({
-    systemPrompt: PROBE_SYSTEM_PROMPT + '\n\nContext:\n' + papersContext,
+    systemPrompt: withMentorContext(learnerId, PROBE_SYSTEM_PROMPT + '\n\nContext:\n' + papersContext),
     history,
     userMessage: context,
-    temperature: 0.6,
+    temperature: 0.2,
     requiredKeys: ['message', 'probe_type']
   });
 
-  const mentorMessage = result.message || 'What do you notice about these papers?';
+  // Ensure message ends with a question — add one if missing
+  let mentorMessage = result.message || 'What do you notice about these papers?';
+  if (!mentorMessage.includes('?')) {
+    mentorMessage += ' What do you think?';
+  }
   saveMessage(learnerId, 'literature', 'mentor', mentorMessage);
 
-  // If gap is forming, save it
+  // Record story moments
+  await detectAndRecordMoments(learnerId, 'literature', userMessage, mentorMessage);
+
+  // If gap is forming, save it and record the milestone
   if (result.forming_gap && result.gap_hypothesis?.gap) {
     saveHypothesis(learnerId, {
       gap: result.gap_hypothesis.gap,
@@ -127,6 +157,8 @@ export async function literatureDiscoveryTurn(learnerId, userMessage, turn) {
       proposed_approach: '',
       confidence_note: result.gap_hypothesis.confusions?.join('; ') || ''
     });
+    recordMoment(learnerId, 'commitment',
+      `Identified research gap: "${result.gap_hypothesis.gap.slice(0, 120)}"`, 'literature');
   }
 
   return {
