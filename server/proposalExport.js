@@ -10,8 +10,12 @@
 
 import { getAllSections, getHypothesis, getHypotheses, getSpecificity, getIntake, getPapers } from './learnerMemory.js';
 
-// Stage 2: IM and BI come FIRST per NSF reviewer expectation and the MIT CommKit
-// annotation ("IM and BI right out of the gate").
+// Section order follows proposal_requirements.md:
+// Title → Abstract → Keywords → Introduction → Project Goal → Methods →
+// Figure → Expected Results/Milestones → Evaluation → Risks → Resources → References
+//
+// intellectual_merit and broader_impacts are folded into introduction
+// (NSF style: IM/BI "right out of the gate")
 const SECTION_ORDER = [
   'intellectual_merit',
   'broader_impacts',
@@ -26,10 +30,10 @@ const SECTION_LABEL = {
   intellectual_merit: 'Intellectual Merit',
   broader_impacts:    'Broader Impacts',
   motivation:         'Introduction and Motivation',
-  novelty:            'Novelty and Prior Work',
-  method:             'Proposed Method',
+  novelty:            'Novelty and Relation to Prior Work',
+  method:             'Methods: Technical Approach and Agent Workflow',
   evaluation:         'Evaluation Plan',
-  risks:              'Feasibility, Risks, and Milestones',
+  risks:              'Risks and Mitigation',
 };
 
 // ── LaTeX helpers ──────────────────────────────────────────────────────────────
@@ -47,6 +51,18 @@ function escapeLatex(text) {
     .replace(/\}/g,  '\\}')
     .replace(/~/g,   '{\\textasciitilde}')
     .replace(/\^/g,  '{\\textasciicircum}')
+    // Unicode math symbols → LaTeX equivalents
+    .replace(/≥/g, '$\\geq$')
+    .replace(/≤/g, '$\\leq$')
+    .replace(/→/g, '$\\rightarrow$')
+    .replace(/←/g, '$\\leftarrow$')
+    .replace(/×/g, '$\\times$')
+    .replace(/±/g, '$\\pm$')
+    .replace(/≠/g, '$\\neq$')
+    .replace(/∈/g, '$\\in$')
+    .replace(/α/g, '$\\alpha$')
+    .replace(/β/g, '$\\beta$')
+    .replace(/γ/g, '$\\gamma$')
     // Convert markdown bold/italic to LaTeX
     .replace(/\*\*(.+?)\*\*/g, '\\textbf{$1}')
     .replace(/\*(.+?)\*/g,     '\\textit{$1}')
@@ -76,12 +92,13 @@ function sectionToLatex(name, content) {
 export function generateLatex(learnerId) {
   const intake     = getIntake(learnerId);
   const hypothesis = getHypothesis(learnerId);
-  const hypotheses = getHypotheses(learnerId);       // Stage 2: H1/H2/H3
-  const specificity = getSpecificity(learnerId);     // Stage 2: dataset/sample/instr/prior
+  const hypotheses = getHypotheses(learnerId);       // H1/H2/H3
+  const specificity = getSpecificity(learnerId);     // dataset/sample/instr/prior
   const papers     = getPapers(learnerId);
   const sections   = getAllSections(learnerId);
 
   const domain  = intake?.domain  || 'Research Domain';
+  const idea    = intake?.idea    || '';
   const gap     = hypothesis?.gap || '';
 
   // Build title from domain
@@ -93,49 +110,113 @@ export function generateLatex(learnerId) {
     sectionMap[s.section_name] = s.content || '';
   }
 
-  // References from papers
+  // ── References from papers ──
   const refs = papers.length
     ? papers.map((p, i) => {
         const authors  = escapeLatex(p.authors || 'Unknown');
-        const title    = escapeLatex(p.title || 'Untitled');
+        const ptitle   = escapeLatex(p.title || 'Untitled');
         const year     = (p.published || '').slice(0, 4);
         const url      = p.url || ('https://arxiv.org/abs/' + p.arxiv_id);
-        return `\\bibitem{ref${i+1}} ${authors}. \\textit{${title}} (${year}). \\url{${url}}`;
+        return `\\bibitem{ref${i+1}} ${authors}. \\textit{${ptitle}} (${year}). \\url{${url}}`;
       }).join('\n\n')
     : '\\bibitem{placeholder} See proposal body for sources.';
 
-  // Abstract from gap if no dedicated abstract section
+  // ── Abstract (required §2) ──
   const abstract = gap
     ? `\\begin{abstract}\n${escapeLatex(gap)}\n\\end{abstract}\n\n`
     : '';
 
-  // Stage 2: explicit hypotheses block — NSF winners always have these
+  // ── Keywords (required §3) ──
+  const keywords = buildKeywords(domain, idea, gap);
+  const keywordsBlock = `\\noindent\\textbf{Keywords:} ${escapeLatex(keywords)}\n\\vspace{0.5em}\n\n`;
+
+  // ── Project Goal (required §5) — synthesized from gap + hypotheses ──
+  const goalContent = buildProjectGoal(gap, hypotheses, idea);
+  const goalBlock = goalContent
+    ? `\\section{Project Goal}\n\n${wrapBullets(escapeLatex(goalContent))}\n\n`
+    : '';
+
+  // ── Figure placeholder (required §7) ──
+  // If a TikZ figure was generated, it's in conversation messages.
+  // For now, include a placeholder figure environment so the section exists.
+  const figureBlock = `\\section{System Overview}
+
+\\begin{figure}[h!]
+\\centering
+\\fbox{\\parbox{0.85\\textwidth}{\\centering\\vspace{2em}
+\\textit{[Figure: System architecture or workflow diagram for ${escapeLatex(domain)}.}\\\\
+\\textit{Replace this placeholder with your TikZ figure or included image.]}
+\\vspace{2em}}}
+\\caption{Proposed workflow architecture for ${escapeLatex(domain)}. See Section~\\ref{sec:method} for detailed stage descriptions.}
+\\label{fig:architecture}
+\\end{figure}
+
+`;
+
+  // ── Expected Results and Milestones (required §8) ──
+  const milestonesContent = buildMilestones(specificity, hypotheses);
+  const milestonesBlock = `\\section{Expected Results and Research Milestones}
+
+${wrapBullets(escapeLatex(milestonesContent))}
+
+`;
+
+  // ── Resources (required §11) ──
+  const resourcesContent = buildResources(domain, specificity);
+  const resourcesBlock = `\\section{Resources, Tools, and Budget}
+
+${wrapBullets(escapeLatex(resourcesContent))}
+
+`;
+
+  // ── Main body sections ──
+  const bodyParts = SECTION_ORDER
+    .filter(name => sectionMap[name])
+    .map(name => {
+      // Add a label to method section for figure cross-reference
+      const extra = name === 'method' ? '\\label{sec:method}\n' : '';
+      return `\\section{${SECTION_LABEL[name] || name}}\n${extra}\n${wrapBullets(escapeLatex(sectionMap[name]))}\n\n`;
+    })
+    .join('\n');
+
+  // ── Hypotheses block (after introduction, before method) ──
   const hypothesesBlock = (hypotheses?.h1 || hypotheses?.h2 || hypotheses?.h3)
-    ? `\\section*{Testable Hypotheses}
+    ? `\\subsection*{Testable Hypotheses}
 \\begin{itemize}
 ${hypotheses.h1 ? `  \\item \\textbf{H1 (Outcome):} ${escapeLatex(hypotheses.h1)}\n` : ''}${hypotheses.h2 ? `  \\item \\textbf{H2 (Mechanism):} ${escapeLatex(hypotheses.h2)}\n` : ''}${hypotheses.h3 ? `  \\item \\textbf{H3 (Impact):} ${escapeLatex(hypotheses.h3)}\n` : ''}\\end{itemize}
 
 `
     : '';
 
-  // Stage 2: specificity commitments — surfaces brutal-specificity to reviewer
-  const specificityBlock = (specificity?.passed)
-    ? `\\section*{Experimental Commitments}
-\\begin{itemize}
-  \\item \\textbf{Dataset:} ${escapeLatex(specificity.dataset_name)}
-  \\item \\textbf{Sample size:} ${escapeLatex(specificity.sample_size)}
-  \\item \\textbf{Instruments:} ${escapeLatex(specificity.named_instruments)}
-  \\item \\textbf{Prior reference:} ${escapeLatex(specificity.prior_reference)}
-\\end{itemize}
+  // ── Assemble in proposal_requirements.md order ──
+  // 1. Title + Abstract + Keywords
+  // 2. Introduction (IM, BI, motivation, novelty)
+  // 3. Project Goal + Hypotheses
+  // 4. Methods
+  // 5. Figure
+  // 6. Expected Results / Milestones
+  // 7. Evaluation
+  // 8. Risks
+  // 9. Resources
+  // 10. References
 
-`
+  // Split body sections by where they belong
+  const introSections = ['intellectual_merit', 'broader_impacts', 'motivation', 'novelty']
+    .filter(name => sectionMap[name])
+    .map(name => `\\section{${SECTION_LABEL[name] || name}}\n\n${wrapBullets(escapeLatex(sectionMap[name]))}\n\n`)
+    .join('\n');
+
+  const methodSection = sectionMap['method']
+    ? `\\section{${SECTION_LABEL['method']}}\n\\label{sec:method}\n\n${wrapBullets(escapeLatex(sectionMap['method']))}\n\n`
     : '';
 
-  // Ordered sections
-  const bodyParts = SECTION_ORDER
-    .filter(name => sectionMap[name])
-    .map(name => sectionToLatex(name, sectionMap[name]))
-    .join('\n');
+  const evalSection = sectionMap['evaluation']
+    ? `\\section{${SECTION_LABEL['evaluation']}}\n\n${wrapBullets(escapeLatex(sectionMap['evaluation']))}\n\n`
+    : '';
+
+  const riskSection = sectionMap['risks']
+    ? `\\section{${SECTION_LABEL['risks']}}\n\n${wrapBullets(escapeLatex(sectionMap['risks']))}\n\n`
+    : '';
 
   return `\\documentclass[11pt,letterpaper]{article}
 
@@ -148,6 +229,15 @@ ${hypotheses.h1 ? `  \\item \\textbf{H1 (Outcome):} ${escapeLatex(hypotheses.h1)
 \\usepackage{parskip}
 \\usepackage{titlesec}
 \\usepackage{fancyhdr}
+\\usepackage{graphicx}
+\\usepackage{tikz}
+\\usetikzlibrary{arrows.meta, positioning, shapes.geometric, fit, calc}
+
+% ── Compact spacing for 3-page limit ─────────────────────────
+\\titlespacing*{\\section}{0pt}{1.2ex plus 0.3ex}{0.6ex plus 0.1ex}
+\\titlespacing*{\\subsection}{0pt}{0.8ex plus 0.2ex}{0.4ex plus 0.1ex}
+\\setlength{\\parskip}{0.4em}
+\\setlength{\\parindent}{0pt}
 
 % ── Header / Footer ───────────────────────────────────────────
 \\pagestyle{fancy}
@@ -166,8 +256,7 @@ ${hypotheses.h1 ? `  \\item \\textbf{H1 (Outcome):} ${escapeLatex(hypotheses.h1)
 \\maketitle
 \\thispagestyle{fancy}
 
-${abstract}${hypothesesBlock}${specificityBlock}${bodyParts}
-
+${abstract}${keywordsBlock}${introSections}${goalBlock}${hypothesesBlock}${methodSection}${figureBlock}${milestonesBlock}${evalSection}${riskSection}${resourcesBlock}
 % ── References ────────────────────────────────────────────────
 \\begin{thebibliography}{99}
 ${refs}
@@ -175,6 +264,77 @@ ${refs}
 
 \\end{document}
 `;
+}
+
+// ── Helper: extract keywords from domain, idea, and gap ──────────────────────
+function buildKeywords(domain, idea, gap) {
+  const words = new Set();
+  // Extract meaningful terms from domain
+  if (domain) domain.split(/[\s,;]+/).filter(w => w.length > 3).forEach(w => words.add(w.toLowerCase()));
+  // Extract from idea
+  if (idea) idea.split(/[\s,;]+/).filter(w => w.length > 4).slice(0, 3).forEach(w => words.add(w.toLowerCase()));
+  // Extract from gap (first sentence)
+  if (gap) {
+    const first = gap.split(/[.!?]/)[0] || '';
+    first.split(/[\s,;]+/).filter(w => w.length > 4).slice(0, 3).forEach(w => words.add(w.toLowerCase()));
+  }
+  const kw = [...words].slice(0, 6);
+  return kw.length > 0 ? kw.join(', ') : 'research proposal, agent workflow';
+}
+
+// ── Helper: synthesize project goal from gap + hypotheses ────────────────────
+function buildProjectGoal(gap, hypotheses, idea) {
+  const parts = [];
+  if (gap) {
+    parts.push(`The goal of this project is to address the following research gap: ${gap}`);
+  } else if (idea) {
+    parts.push(`The goal of this project is to investigate: ${idea}`);
+  }
+  if (hypotheses?.h1) {
+    parts.push(`Specifically, we test whether ${hypotheses.h1} (H1).`);
+  }
+  if (hypotheses?.h2) {
+    parts.push(`We further examine the underlying mechanism: ${hypotheses.h2} (H2).`);
+  }
+  return parts.join(' ');
+}
+
+// ── Helper: expected results and milestones ──────────────────────────────────
+function buildMilestones(specificity, hypotheses) {
+  const parts = [];
+  parts.push('This project targets the following milestones and expected outcomes:');
+  parts.push('');
+  parts.push('- **Milestone 1 (Weeks 1--3):** Literature review, dataset acquisition, and baseline implementation.');
+  if (specificity?.dataset_name) {
+    parts.push(`- **Milestone 2 (Weeks 4--6):** Data collection and preprocessing using ${specificity.dataset_name}${specificity.sample_size ? ` (n=${specificity.sample_size})` : ''}.`);
+  } else {
+    parts.push('- **Milestone 2 (Weeks 4--6):** Data collection, preprocessing, and pilot experiments.');
+  }
+  parts.push('- **Milestone 3 (Weeks 7--9):** Core implementation and initial evaluation against baselines.');
+  if (hypotheses?.h1) {
+    parts.push(`- **Milestone 4 (Weeks 10--12):** Full evaluation of hypotheses, statistical analysis, and ablation studies.`);
+  } else {
+    parts.push('- **Milestone 4 (Weeks 10--12):** Full evaluation, statistical analysis, and write-up.');
+  }
+  parts.push('- **Milestone 5 (Weeks 13--14):** Final write-up, figure polishing, and submission preparation.');
+  return parts.join('\n');
+}
+
+// ── Helper: resources section ────────────────────────────────────────────────
+function buildResources(domain, specificity) {
+  const parts = [];
+  parts.push('The following resources are required for this project:');
+  parts.push('');
+  parts.push('- **Compute:** Standard workstation with GPU access (university cluster or cloud credits) for model training and evaluation.');
+  parts.push('- **Software:** Python scientific stack (PyTorch/TensorFlow, scikit-learn, pandas), LaTeX for document preparation, Git for version control.');
+  if (specificity?.dataset_name) {
+    parts.push(`- **Data:** ${specificity.dataset_name}${specificity.sample_size ? ` (target n=${specificity.sample_size})` : ''}. ${specificity.named_instruments ? `Instruments: ${specificity.named_instruments}.` : ''}`);
+  } else {
+    parts.push('- **Data:** Publicly available datasets relevant to the domain; specific datasets to be identified during Milestone 1.');
+  }
+  parts.push('- **Budget:** No direct funding required; project uses free-tier API access and university compute resources.');
+  parts.push('- **Release plan:** Code and evaluation scripts will be released as an open-source repository upon project completion.');
+  return parts.join('\n');
 }
 
 // ── Print-ready HTML (browser → Print → Save as PDF) ──────────────────────────
@@ -409,30 +569,43 @@ export function generatePrintHtml(learnerId) {
     </div>
     ` : ''}
 
-    ${(hypotheses?.h1 || hypotheses?.h2 || hypotheses?.h3) ? `
+    <p style="text-indent:0; margin-top:0.5em;"><strong>Keywords:</strong> ${buildKeywords(domain, intake?.idea || '', gap)}</p>
+
+    ${sectionHtml}
+
+    ${(() => {
+      const goalContent = buildProjectGoal(gap, hypotheses, intake?.idea || '');
+      return goalContent ? `
     <section>
-      <h2>Testable Hypotheses</h2>
+      <h2>Project Goal</h2>
+      ${renderContent(goalContent)}
+      ${(hypotheses?.h1 || hypotheses?.h2 || hypotheses?.h3) ? `
+      <p style="text-indent:0;"><strong>Testable Hypotheses:</strong></p>
       <ul>
         ${hypotheses.h1 ? `<li><strong>H1 (Outcome):</strong> ${hypotheses.h1}</li>` : ''}
         ${hypotheses.h2 ? `<li><strong>H2 (Mechanism):</strong> ${hypotheses.h2}</li>` : ''}
         ${hypotheses.h3 ? `<li><strong>H3 (Impact):</strong> ${hypotheses.h3}</li>` : ''}
-      </ul>
-    </section>
-    ` : ''}
+      </ul>` : ''}
+    </section>` : '';
+    })()}
 
-    ${specificity?.passed ? `
     <section>
-      <h2>Experimental Commitments</h2>
-      <ul>
-        <li><strong>Dataset:</strong> ${specificity.dataset_name}</li>
-        <li><strong>Sample size:</strong> ${specificity.sample_size}</li>
-        <li><strong>Instruments:</strong> ${specificity.named_instruments}</li>
-        <li><strong>Prior reference:</strong> ${specificity.prior_reference}</li>
-      </ul>
+      <h2>System Overview</h2>
+      <div style="border:1px solid #999; padding:2em; text-align:center; margin:1em 0; color:#666; font-style:italic;">
+        [Figure: System architecture or workflow diagram for ${domain}. Replace with your diagram.]
+      </div>
+      <p style="text-indent:0; font-size:9.5pt; text-align:center; color:#444;"><strong>Figure 1:</strong> Proposed workflow architecture for ${domain}.</p>
     </section>
-    ` : ''}
 
-    ${sectionHtml}
+    <section>
+      <h2>Expected Results and Research Milestones</h2>
+      ${renderContent(buildMilestones(specificity, hypotheses))}
+    </section>
+
+    <section>
+      <h2>Resources, Tools, and Budget</h2>
+      ${renderContent(buildResources(domain, specificity))}
+    </section>
 
     ${papers.length ? `
     <div class="references">

@@ -13,7 +13,7 @@
  * response JSON.
  */
 
-import { callMentorJson } from '../tools/gemini.js';
+import { callLLMJson as callMentorJson } from '../tools/llm.js';
 import {
   saveIntakeField,
   saveMessage,

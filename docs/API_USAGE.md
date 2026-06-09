@@ -11,7 +11,7 @@ Copy `.env.example` to `.env` and set:
 ```bash
 LLM_PROVIDER=gemini
 LLM_API_URL=https://generativelanguage.googleapis.com/v1beta
-LLM_API_KEY=your_key_here
+GROQ_API_KEY=your_key_here
 LLM_MODEL=gemini-2.5-flash
 ```
 
@@ -20,7 +20,7 @@ For an OpenAI-compatible chat completions endpoint, use:
 ```bash
 LLM_PROVIDER=openai-compatible
 LLM_API_URL=https://api.openai.com/v1/chat/completions
-LLM_API_KEY=your_key_here
+GROQ_API_KEY=your_key_here
 LLM_MODEL=your_model_here
 ```
 

@@ -1,165 +1,121 @@
-# Three-Stage Final Project: Research Proposal Agent
+# Socratic Research Mentorship Agent
 
-## Goal
+A research-proposal mentor that doesn't write your proposal *for* you — it walks you through discovering one. The agent acts as a persistent mentor with memory of your journey: it checks your conceptual foundations, reads papers with you, pressure-tests your research gap against the literature, forces concrete experimental commitments, and only then drafts — with every claim grounded in retrieved sources. The final artifact is a compile-ready `proposal.tex` / `proposal.pdf`.
 
-Build and evaluate a research proposal workflow. The project is not just about producing one polished PDF. It asks you to show that you understand how strong proposals are written, how an agent can support that process, and how the final proposal can be evaluated.
+Built for the CS222 Spring final project (course docs live in [docs/](docs/)).
 
-You will complete the final project in three stages:
+## How It Works
 
-1. **Stage 1: Initial Agent + Workflow Design**
-   - Build an initial agent or prototype through vibe coding.
-   - Research proposal-writing guides, examples, and agent workflow patterns.
-   - Submit a 5-minute presentation video of your workflow design.
-   - Attend the mandatory in-person presentation session to show your motivation, idea, and goal.
-   - A polished proposal is not required in this stage.
+The workflow is a gated pipeline — you can't skip ahead until the current phase's quality bar is met:
 
-2. **Stage 2: Refined Agent + Workflow Usage**
-   - Refine the Stage 1 agent or workflow.
-   - Show how the agent/workflow is used to generate, revise, and evaluate proposal content.
-   - Submit usage evidence such as logs, transcripts, screenshots, and review artifacts.
+```
+Phase 1          Phase 2                  Phase 2.5             Phase 3            Phase 4
+Domain     →     Literature         →     Gap Validation   →    Drafting      →    Rubric Check
+Readiness        Discovery                + Deepening           + Figures          + Adversarial Review
+(Feynman-style   (read papers            (novelty check         (RAG-grounded      (calibrated scoring
+ concept check)   together, find          vs. literature,        sections,          against course rubric,
+                  the gap Socratically)   claim stress-test)     TikZ figures)      reviewer attacks)
+```
 
-3. **Stage 3: Final Proposal**
-   - Submit the final `proposal.pdf`.
-   - The proposal is graded separately for research proposal quality.
-   - The proposal should not be framed as a short course implementation report; the course deadline and the proposed research timeline are separate.
+Throughout, a **relational mentor layer** tracks your story — breakthroughs, struggles, commitments, milestones — and injects that context into every LLM call, so the mentor remembers you across sessions. A **"Your Journey" panel** in the UI shows the moments it recorded.
 
-If you use vibe coding only to directly produce a proposal, you can receive Stage 3 proposal credit. However, Stage 2 credit requires evidence that your own workflow or agent guided the proposal creation process.
+### Key features
 
-## Deadlines And Submission Requirements
+- **Socratic gap discovery** — the agent never hands you a gap; it probes what you noticed across papers until the gap surfaces, citing paper titles in every exchange.
+- **Tavily-backed paper search** — real papers from arxiv/Semantic Scholar with 7-day result caching (replaced the rate-limited arxiv API).
+- **Specificity gate** — refuses to draft until you commit to a named dataset, sample size, instruments, and a prior reference.
+- **RAG-grounded drafting and scoring** — NSF merit-review criteria, proposal-writing heuristics, and the course rubric are embedded in SQLite; critiques cite the standard they're judged against.
+- **Adversarial reviewer** — attacks your draft's weakest claims before a real reviewer does.
+- **One-call LaTeX composition** — exports the full proposal as a single coherent LLM-composed document with a native TikZ workflow figure, compiled to PDF with tectonic (LLM repair retry on compile errors, template + print-HTML fallbacks).
+- **Single-call agent architecture** — each phase is one well-structured LLM call, not chains of them, so free-tier rate limits are never the bottleneck.
 
-All deadlines use Pacific Time.
+## Setup
 
-| Stage | Due Date | Submit | Notes |
-| --- | --- | --- | --- |
-| Stage 1: Initial Agent + Workflow Design | Friday, June 5, 2026, 11:59 PM | 5-minute presentation video, initial agent/prototype artifact, optional screenshots or interaction trace. | Stage 1 is graded from the video. The in-person presentation is mandatory but not separately graded; it is for showing motivation, ideas, goals, and peer feedback. Late submissions accepted until Sunday, June 7, 2026, 11:59 PM with a 20% penalty. |
-| Stage 2: Refined Agent + Workflow Usage | Friday, June 12, 2026, 11:59 PM | Refined agent/workflow, `workflow_usage.md`, run evidence, `AI_USAGE.md`. | Late submissions accepted until Sunday, June 14, 2026, 11:59 PM with a 20% penalty. |
-| Stage 3: Final Proposal | Friday, June 12, 2026, 11:59 PM | `proposal.pdf`, proposal source, references or source notes, figure/diagram source if applicable. | Late submissions accepted until Sunday, June 14, 2026, 11:59 PM with a 20% penalty. |
+### Prerequisites
 
-## Optional Starter App
+- **Node 18+**
+- **[tectonic](https://tectonic-typesetting.github.io/)** for PDF compilation: `brew install tectonic` (macOS)
+- API keys (all free tier):
+  - [Cerebras](https://cloud.cerebras.ai/) — chat LLM (`gpt-oss-120b`)
+  - [Tavily](https://tavily.com/) — paper search (1000 queries/day)
+  - [Gemini](https://ai.google.dev/) — embeddings only
 
-This repository includes a small starter app to illustrate one possible proposal-agent workflow. It is optional: you may use it, replace it, or ignore it.
-
-Example starter screens:
-
-![Starter app workflow screen](docs/assets/starter-app-workflow.png)
-
-![Starter app proposal preview screen](docs/assets/starter-app-proposal-preview.png)
-
-To run the starter:
+### Install
 
 ```bash
+git clone https://github.com/SuryatejaDuvvuri/Socratic-Mentorship-Agent.git
+cd Socratic-Mentorship-Agent
 npm install
+
+# Configure keys
+cp .env.example .env
+# … edit .env with your CEREBRAS_API_KEY, TAVILY_API_KEY, LLM_API_KEY (Gemini)
+
+# Embed the RAG corpus (NSF criteria, proposal heuristics, course rubric)
+npm run rag:ingest
+```
+
+### Run
+
+```bash
 npm run dev
 ```
 
-Open:
+Open **http://127.0.0.1:5174** (API runs on 8787).
 
-```text
-http://127.0.0.1:5174
+Start a session, enter your research domain, and follow the phases. Progress persists in `mentor.db` (SQLite) — close the tab and resume any time; the mentor remembers where you left off.
+
+### Export the proposal
+
+From the UI's export buttons, or directly:
+
+```bash
+# Compile-ready LaTeX source
+curl -o proposal.tex "http://127.0.0.1:8787/api/mentor/export/latex/<learnerId>"
+
+# Compiled PDF (add ?force=1 to recompose from scratch)
+curl -o proposal.pdf "http://127.0.0.1:8787/api/mentor/export/pdf/<learnerId>"
 ```
 
-We encourage students to start with the [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing). If the free tier is not enough for your project, email the TA at <yfu093@ucr.edu> to request additional API access. Keep all API keys out of GitHub and document your setup.
+The export is composed by the LLM in one pass from your accumulated state (gap, hypotheses, commitments, papers, drafted sections) — coherent prose, a TikZ pipeline figure, and references built only from papers you actually read.
 
-## Resources
+## Repo Layout
 
-Vibe coding tools:
-
-- [Cursor](https://cursor.com/en/students). Students can apply for a student account with their `.edu` email; contact Cursor through the official student page if you need help with the application.
-- [GitHub Copilot](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/enable-copilot/set-up-for-students)
-- [Google Gemini API](https://ai.google.dev/gemini-api/docs/pricing)
-- [Google Gemini Code Assist](https://developers.google.com/gemini-code-assist/resources/faqs)
-- [Claude / Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
-- [Windsurf](https://windsurf.com/windsurf/students)
-- [Cline](https://docs.cline.bot/introduction/overview) / [Roo Code](https://roocode.com/)
-- [ChatGPT](https://chatgpt.com/)
-- [v0 by Vercel](https://v0.dev/)
-
-Tool availability, student plans, and free tiers can change. Check the official pages before relying on a specific plan.
-
-Proposal-agent inspiration:
-
-- [Civio](https://www.civio.ai/) shows how proposal and compliance workflows can become real products. A strong class project can be more than a demo; it can point toward a startup-style opportunity if it solves a real workflow pain.
-
-## Stage 1 Deliverables
-
-Stage 1 focuses on initial agent design and workflow thinking. A polished proposal is not required.
-
-Submit:
-
-- initial agent or prototype demo artifact;
-- 5-minute presentation video or link;
-- mandatory in-person presentation for demonstration and feedback;
-- optional screenshots or interaction trace.
-
-Details: [docs/stage_1_workflow_design.md](docs/stage_1_workflow_design.md)
-
-## Stage 2 Deliverables
-
-Stage 2 focuses on refined agent behavior and workflow usage evidence.
-
-Submit:
-
-- refined agent implementation or reproducible workflow artifact;
-- `workflow_usage.md`;
-- run transcript, screenshots, logs, or demo;
-- `AI_USAGE.md`;
-
-Details: [docs/stage_2_workflow_usage.md](docs/stage_2_workflow_usage.md)
-
-## Stage 3 Deliverables
-
-Stage 3 focuses on final proposal quality.
-
-Submit:
-
-- `proposal.pdf`;
-- `proposal.tex` or equivalent proposal source;
-- references or source notes;
-- figure or diagram source if applicable.
-
-Details: [docs/stage_3_final_proposal.md](docs/stage_3_final_proposal.md)
-
-## Required Proposal Requirements
-
-The final proposal requirements are in:
-
-[docs/proposal_requirements.md](docs/proposal_requirements.md)
-
-Detailed grading is in one file:
-
-[docs/grading_rubric.md](docs/grading_rubric.md)
-
-## Grading Overview
-
-Total: 100 points.
-
-Bonus: up to 5 subjective points for unusually impressive work.
-
-| Stage | Points | What It Evaluates |
-| --- | ---: | --- |
-| Stage 1: Initial Agent + Workflow Design | 30 | Initial agent/prototype, vibe coding demo, proposal-writing research, workflow thinking, and presentation. |
-| Stage 2: Refined Agent + Workflow Usage | 20 | Evidence that the refined agent/workflow was used to generate, revise, and evaluate proposal content. |
-| Stage 3: Final Proposal | 50 | Quality of the submitted `proposal.pdf`, including format, figure, logic, novelty, method, evaluation, feasibility, and writing. |
-
-Detailed grading: [docs/grading_rubric.md](docs/grading_rubric.md)
-
-## Suggested Repo Layout
-
-```text
-.
-├── README.md
-├── workflow_usage.md
-├── proposal.pdf
-├── proposal.tex
-├── AI_USAGE.md
-├── evidence/
-└── source-code-or-workflow/
+```
+server/
+  index.js               Express API (sessions, phases, export)
+  proposalExport.js      Template LaTeX/HTML assembler (export fallback)
+  pdfExport.js           tectonic compilation + LaTeX normalization
+  learnerMemory.js       SQLite persistence for all learner state
+  mentorPersona.js       Relational mentor identity + story moments
+  agents/
+    domainReadiness.js   Phase 1 — Feynman-style concept check
+    literatureDiscovery.js Phase 2 — Socratic paper reading
+    gapValidation.js     Phase 2.5 — novelty check vs. literature
+    gapDeepening.js      Phase 2.5 — claim extraction + stress-test
+    hypothesisGeneration.js  H1/H2/H3 testable hypotheses
+    specificityGate.js   Brutal-specificity commitments gate
+    proposalDraft.js     Phase 3 — RAG-grounded section drafting
+    figureGeneration.js  TikZ figure suggestion + generation
+    rubricCheck.js       Phase 4 — calibrated rubric scoring
+    adversarialReview.js Reviewer-attack critique
+    intake.js            Session intake (domain + idea capture)
+    proposalCompose.js   One-call full proposal.tex composition
+  tools/
+    llm.js               Multi-provider LLM wrapper (Cerebras/Groq/SambaNova/Gemini/Ollama)
+    tavily.js            Paper search + caching
+  rag/                   Corpus, embeddings, retrieval
+src/                     React UI (Vite)
+docs/                    Course requirements and rubric
+AI_USAGE.md              Models, prompts, human-vs-AI contributions, failures
 ```
 
-## Bottom Line
+## Troubleshooting
 
-Stage 1 asks: **What is your initial agent and proposal-writing workflow idea?**
-
-Stage 2 asks: **Did you refine and actually use that agent/workflow to produce proposal artifacts?**
-
-Stage 3 asks: **Is the final proposal itself strong?**
+| Symptom | Fix |
+|---|---|
+| `CEREBRAS_API_KEY not set` | Copy `.env.example` → `.env` and add your key |
+| PDF export returns HTML | tectonic isn't installed — `brew install tectonic` |
+| No papers found | Check `TAVILY_API_KEY`; queries are cached 7 days in `mentor.db` |
+| Embeddings fail on ingest | `LLM_API_KEY` (Gemini) is required for `npm run rag:ingest` |
+| Want a different LLM | Set `LLM_PROVIDER` + matching key in `.env` (see `.env.example`) |

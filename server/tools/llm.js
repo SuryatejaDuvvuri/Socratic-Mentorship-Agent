@@ -56,7 +56,7 @@ async function callOllama({ systemPrompt, history = [], userMessage, temperature
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function callGroq({ systemPrompt, history = [], userMessage, temperature = 0.7, forceJson = false }) {
+async function callGroq({ systemPrompt, history = [], userMessage, temperature = 0.7, forceJson = false, maxTokens = 4096 }) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error('GROQ_API_KEY not set in .env');
 
@@ -72,7 +72,7 @@ async function callGroq({ systemPrompt, history = [], userMessage, temperature =
     model,
     messages,
     temperature,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
     ...(forceJson ? { response_format: { type: 'json_object' } } : {})
   };
 
@@ -111,7 +111,7 @@ async function callGroq({ systemPrompt, history = [], userMessage, temperature =
 
 // ── Cerebras (OpenAI-compatible, ~2000 tok/s) ────────────────────────────────
 
-async function callCerebras({ systemPrompt, history = [], userMessage, temperature = 0.7, forceJson = false }) {
+async function callCerebras({ systemPrompt, history = [], userMessage, temperature = 0.7, forceJson = false, maxTokens = 4096 }) {
   const apiKey = process.env.CEREBRAS_API_KEY;
   if (!apiKey) throw new Error('CEREBRAS_API_KEY not set in .env');
 
@@ -127,7 +127,7 @@ async function callCerebras({ systemPrompt, history = [], userMessage, temperatu
     model,
     messages,
     temperature,
-    max_completion_tokens: 4096,
+    max_completion_tokens: maxTokens,
     ...(forceJson ? { response_format: { type: 'json_object' } } : {})
   };
 
@@ -150,7 +150,7 @@ async function callCerebras({ systemPrompt, history = [], userMessage, temperatu
 
 // ── SambaNova (OpenAI-compatible, free Llama 405B) ────────────────────────────
 
-async function callSambaNova({ systemPrompt, history = [], userMessage, temperature = 0.7, forceJson = false }) {
+async function callSambaNova({ systemPrompt, history = [], userMessage, temperature = 0.7, forceJson = false, maxTokens = 4096 }) {
   const apiKey = process.env.SAMBANOVA_API_KEY;
   if (!apiKey) throw new Error('SAMBANOVA_API_KEY not set in .env');
 
@@ -166,7 +166,7 @@ async function callSambaNova({ systemPrompt, history = [], userMessage, temperat
     model,
     messages,
     temperature,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
     ...(forceJson ? { response_format: { type: 'json_object' } } : {})
   };
 

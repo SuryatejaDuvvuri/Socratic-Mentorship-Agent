@@ -1310,3 +1310,26 @@ th {
   border-top: 1px dashed #d2dee0;
   padding-top: 7px;
 }
+
+/* ── Idea input section (Phase 1 → Phase 2 gate) ── */
+.idea-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #d5e0e3;
+}
+
+.idea-prompt {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #26363b;
+  line-height: 1.4;
+}
+
+.idea-prompt small {
+  font-weight: 400;
+  color: #647177;
+}

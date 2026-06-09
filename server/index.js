@@ -20,6 +20,7 @@ import { importPaperFromBuffer, getImportedPaperCount } from './paperImport.js';
 import { getTraces, getSessionSummary } from './observability.js';
 import { getStory, buildMentorContext } from './mentorPersona.js';
 import { generateLatex, generatePrintHtml } from './proposalExport.js';
+import { composeProposalLatex, repairProposalLatex } from './agents/proposalCompose.js';
 import { getDb } from './db.js';
 
 // Multer — memory storage for PDF uploads (no disk writes)
@@ -436,10 +437,22 @@ app.get('/api/mentor/traces/:learnerId/summary', (req, res) => {
 
 // ─── Export: LaTeX + PDF ─────────────────────────────────────────────────────
 
-// GET /api/mentor/export/latex — download .tex source
-app.get('/api/mentor/export/latex/:learnerId', (req, res) => {
+// Starter-style export: LLM composes the complete proposal.tex in one call
+// (coherent prose + native TikZ figure), falling back to the template
+// assembler if the model is unavailable.
+async function buildProposalLatex(learnerId, { force = false } = {}) {
   try {
-    const latex = generateLatex(req.params.learnerId);
+    return await composeProposalLatex(learnerId, { force });
+  } catch (e) {
+    console.warn('[export] LLM composition failed, using template assembler:', e.message);
+    return generateLatex(learnerId);
+  }
+}
+
+// GET /api/mentor/export/latex — download .tex source (?force=1 to recompose)
+app.get('/api/mentor/export/latex/:learnerId', async (req, res) => {
+  try {
+    const latex = await buildProposalLatex(req.params.learnerId, { force: req.query.force === '1' });
     res.setHeader('Content-Type', 'application/x-latex');
     res.setHeader('Content-Disposition', 'attachment; filename="proposal.tex"');
     res.send(latex);
@@ -449,15 +462,34 @@ app.get('/api/mentor/export/latex/:learnerId', (req, res) => {
   }
 });
 
-// GET /api/mentor/export/pdf/:learnerId — print-ready HTML (File → Print → Save as PDF)
-app.get('/api/mentor/export/pdf/:learnerId', (req, res) => {
+// GET /api/mentor/export/pdf/:learnerId — compile LaTeX to PDF via tectonic
+// Chain: compose → compile; compile error → LLM repair → compile;
+//        composition unavailable → template assembler → compile; → HTML fallback
+app.get('/api/mentor/export/pdf/:learnerId', async (req, res) => {
   try {
-    const html = generatePrintHtml(req.params.learnerId);
-    res.setHeader('Content-Type', 'text/html');
-    res.send(html);
+    const latex = await buildProposalLatex(req.params.learnerId, { force: req.query.force === '1' });
+    let pdf;
+    try {
+      pdf = await proposalLatexToPdf(latex, 'proposal');
+    } catch (compileErr) {
+      console.warn('[export/pdf] compile failed, attempting LLM repair:', compileErr.message);
+      const repaired = await repairProposalLatex(req.params.learnerId, latex, compileErr.message);
+      pdf = await proposalLatexToPdf(repaired, 'proposal');
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="proposal.pdf"');
+    res.send(pdf);
   } catch (e) {
     console.error('[export/pdf]', e);
-    res.status(500).json({ error: e.message });
+    // Fallback to print-ready HTML if everything else fails
+    try {
+      console.warn('[export/pdf] falling back to print-ready HTML');
+      const html = generatePrintHtml(req.params.learnerId);
+      res.setHeader('Content-Type', 'text/html');
+      res.send(html);
+    } catch (e2) {
+      res.status(500).json({ error: e.message });
+    }
   }
 });
 

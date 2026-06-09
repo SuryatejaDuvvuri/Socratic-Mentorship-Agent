@@ -181,14 +181,14 @@ export function getAllSections(learnerId) {
 
 // ─── Rubric Checks ────────────────────────────────────────────────────────────
 
-export function saveRubricCheck(learnerId, criterion, maxPoints, status, evidence, suggestedFix) {
+export function saveRubricCheck(learnerId, criterion, maxPoints, projectedPoints, status, evidence, suggestedFix) {
   getDb()
     .prepare(
       `INSERT INTO rubric_checks
-        (learner_id, criterion, max_points, status, evidence, suggested_fix)
-       VALUES (?, ?, ?, ?, ?, ?)`
+        (learner_id, criterion, max_points, projected_points, status, evidence, suggested_fix)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(learnerId, criterion, maxPoints, status, evidence, suggestedFix);
+    .run(learnerId, criterion, maxPoints, projectedPoints ?? maxPoints, status, evidence, suggestedFix);
 }
 
 export function getLatestRubricChecks(learnerId) {
@@ -206,6 +206,55 @@ export function getLatestRubricChecks(learnerId) {
     .all(learnerId, learnerId);
 }
 
+// ─── Stage 2 — Testable Hypotheses (H1/H2/H3) ────────────────────────────────
+
+export function saveHypotheses(learnerId, { h1, h2, h3, rationale, mentor_note }) {
+  getDb()
+    .prepare(
+      `INSERT INTO research_hypotheses (learner_id, h1, h2, h3, rationale, mentor_note)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(learner_id) DO UPDATE SET
+         h1 = excluded.h1,
+         h2 = excluded.h2,
+         h3 = excluded.h3,
+         rationale = excluded.rationale,
+         mentor_note = excluded.mentor_note,
+         updated_at = datetime('now')`
+    )
+    .run(learnerId, h1, h2, h3, rationale, mentor_note);
+}
+
+export function getHypotheses(learnerId) {
+  return getDb()
+    .prepare('SELECT * FROM research_hypotheses WHERE learner_id = ?')
+    .get(learnerId) || null;
+}
+
+// ─── Stage 2 — Specificity Gate ───────────────────────────────────────────────
+
+export function saveSpecificity(learnerId, { dataset_name, sample_size, named_instruments, prior_reference, passed, mentor_feedback }) {
+  getDb()
+    .prepare(
+      `INSERT INTO specificity_gate (learner_id, dataset_name, sample_size, named_instruments, prior_reference, passed, mentor_feedback)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(learner_id) DO UPDATE SET
+         dataset_name = excluded.dataset_name,
+         sample_size = excluded.sample_size,
+         named_instruments = excluded.named_instruments,
+         prior_reference = excluded.prior_reference,
+         passed = excluded.passed,
+         mentor_feedback = excluded.mentor_feedback,
+         updated_at = datetime('now')`
+    )
+    .run(learnerId, dataset_name, sample_size, named_instruments, prior_reference, passed ? 1 : 0, mentor_feedback);
+}
+
+export function getSpecificity(learnerId) {
+  return getDb()
+    .prepare('SELECT * FROM specificity_gate WHERE learner_id = ?')
+    .get(learnerId) || null;
+}
+
 // ─── Full state snapshot ──────────────────────────────────────────────────────
 
 export function getLearnerState(learnerId) {
@@ -215,6 +264,8 @@ export function getLearnerState(learnerId) {
     conversation: getConversation(learnerId),
     papers: getPapers(learnerId),
     hypothesis: getHypothesis(learnerId),
+    hypotheses: getHypotheses(learnerId),          // Stage 2: H1/H2/H3
+    specificity: getSpecificity(learnerId),        // Stage 2: specificity gate
     sections: getAllSections(learnerId),
     rubricChecks: getLatestRubricChecks(learnerId)
   };

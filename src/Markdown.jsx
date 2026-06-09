@@ -4,8 +4,15 @@
 // while fixing the "raw **stars** and bullets" rendering problem.
 
 function renderInline(text, keyPrefix) {
+  // Strip LaTeX notation ($...$, $$...$$, \(...\), \[...\])
+  let cleaned = String(text)
+    .replace(/\$\$[^\$]+\$\$/g, '')  // Remove display math $$...$$
+    .replace(/\$[^\$]+\$/g, '')      // Remove inline math $...$
+    .replace(/\\\([^)]+\\\)/g, '')   // Remove \(...\)
+    .replace(/\\\[[^\]]+\\\]/g, ''); // Remove \[...\]
+
   // Split on **bold** and `code`, keep delimiters.
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = cleaned.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return parts.map((part, i) => {
     if (/^\*\*[^*]+\*\*$/.test(part)) {
       return <strong key={`${keyPrefix}-b-${i}`}>{part.slice(2, -2)}</strong>;
