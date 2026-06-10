@@ -30,11 +30,19 @@ OUTPUT: Return ONLY raw LaTeX source, starting with \\documentclass. No markdown
 
 FORMAT REQUIREMENTS (course rubric — follow exactly):
 - \\documentclass[11pt]{article} with \\usepackage[margin=1in]{geometry}
+- Add these spacing packages immediately after geometry (they are required — do NOT omit them):
+  \\usepackage{titlesec}
+  \\titleformat{\\section}{\\normalfont\\large\\bfseries}{}{0em}{}
+  \\titlespacing*{\\section}{0pt}{0.8ex plus 0.2ex}{0.4ex plus 0.1ex}
+  \\titlespacing*{\\subsection}{0pt}{0.6ex plus 0.1ex}{0.3ex plus 0.1ex}
+  \\setlength{\\parskip}{0pt}
+  \\setlength{\\parsep}{0pt}
 - HARD LIMIT: the body (everything before References) must fit in 3 pages. This is graded. Budget strictly:
   * Abstract ≤ 110 words; Introduction ≤ 200 words; Novelty ≤ 180 words (one compact sentence per cited paper)
   * Goal+Hypotheses ≤ 130 words; Methods ≤ 320 words; Milestones ≤ 90 words (one line per milestone)
-  * Evaluation ≤ 180 words; Risks ≤ 110 words (3-4 risks max, one line each); Resources ≤ 70 words
+  * Evaluation ≤ 140 words; Risks ≤ 90 words (3 risks max, one line each); Resources ≤ 50 words
   * Use \\setlist{nosep} and avoid blank-line padding. Prefer compact run-in lists over tall bullet stacks.
+  * DO NOT add blank lines between paragraphs or list items. LaTeX inserts spacing automatically.
 - Required structure, in order:
   1. Title (specific and descriptive, not "Research Proposal: <domain>")
   2. Abstract (4-6 sentences: problem, gap, approach, expected contribution)
@@ -52,8 +60,11 @@ FORMAT REQUIREMENTS (course rubric — follow exactly):
 
 FIGURE RULES (7 rubric points depend on this):
 - Include exactly one figure: a workflow/architecture diagram of the proposed method.
-- Build it natively in LaTeX with TikZ: simple left-to-right pipeline of labeled rectangular nodes connected by arrows. Use ONLY: \\usepackage{tikz} with \\usetikzlibrary{arrows.meta, positioning}.
-- Keep TikZ minimal and compile-safe: node distance 1.2cm, rectangle nodes with draw + rounded corners + text width if labels are long, -{Stealth} arrows. No decorations, no shadows, no custom colors beyond gray fills.
+- Build it natively in LaTeX with TikZ. Use ONLY: \\usepackage{tikz} with \\usetikzlibrary{arrows.meta, positioning}.
+- PAGE WIDTH CONSTRAINT: the text area is 6.5 inches (16.5 cm). The entire tikzpicture MUST fit within this width.
+  If you have more than 3 pipeline stages, use TWO ROWS (top row: stages 1-3, bottom row: stages 4-N) with a downward arrow connecting them.
+  For a single row, use at most 3-4 nodes with: node distance=0.9cm, text width=2.5cm, font=\\small.
+- Rectangle nodes with draw + rounded corners, -{Stealth} arrows. No decorations, no shadows, no custom colors.
 - Give it \\caption{} explaining what the reader should learn, and \\label{fig:workflow}.
 - The Methods text MUST reference and explain the figure.
 
