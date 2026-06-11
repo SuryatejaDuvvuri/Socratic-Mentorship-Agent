@@ -93,14 +93,14 @@ export async function runAdversarialReview(learnerId) {
     ? `Dataset: ${specificity.dataset_name}\nSample: ${specificity.sample_size}\nInstruments: ${specificity.named_instruments}\nPrior ref: ${specificity.prior_reference}`
     : 'Specificity gate: NOT passed — no concrete commitments on file.';
 
-  // Pull grounding from accepted proposal patterns + GRFP guide
-  const { context: grounding } = await retrieveGrounding(
+  // Multi-hop retrieval: pull accepted proposal patterns + GRFP guide
+  const { context: grounding, citations } = await retrieveGrounding(
     'what NSF GRFP reviewers look for: hypothesis, specificity, intellectual merit, broader impacts, prior work',
-    { k: 6, preferTags: ['accepted-proposal', 'grfp', 'rubric', 'novelty', 'broader-impacts'] }
+    { k: 6, preferTags: ['accepted-proposal', 'grfp', 'rubric', 'novelty', 'broader-impacts'], maxHops: 2 }
   );
 
   const groundingBlock = grounding
-    ? `\n\nACCEPTED PROPOSAL STANDARDS (cite these by [number] in your questions):\n${grounding}`
+    ? `\n\nACCEPTED PROPOSAL STANDARDS (cite these by [RAG-N] tag in your questions):\n${grounding}`
     : '';
 
   const result = await callMentorJson({

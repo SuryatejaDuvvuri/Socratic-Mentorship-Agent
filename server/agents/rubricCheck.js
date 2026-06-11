@@ -105,13 +105,13 @@ export async function runRubricCheck(learnerId) {
     ? `Research gap: ${hypothesis.gap}\nWhy it matters: ${hypothesis.why_it_matters}`
     : 'No gap hypothesis yet.';
 
-  // RAG: pull the grading standards so the evaluation cites real criteria.
-  const { context: grounding } = await retrieveGrounding(
+  // RAG: multi-hop retrieval pulls grading standards so evaluation cites real criteria.
+  const { context: grounding, citations } = await retrieveGrounding(
     'grading criteria for a research proposal: novelty, motivation, method, evaluation, feasibility, format',
-    { k: 6, preferTags: ['rubric', 'evaluation'] }
+    { k: 6, preferTags: ['rubric', 'evaluation'], maxHops: 2 }
   );
   const groundingBlock = grounding
-    ? `\n\nGROUNDING — the standards each criterion must be judged against (cite by [number] in your evidence):\n${grounding}`
+    ? `\n\nGROUNDING — the standards each criterion must be judged against (cite by [RAG-N] tag in your evidence):\n${grounding}`
     : '';
 
   const result = await callMentorJson({

@@ -106,14 +106,14 @@ export async function draftSection(learnerId, sectionName) {
 
   const context = buildDraftContext(sectionName, hypothesis, papers, intake, hypotheses, specificity);
 
-  // RAG: pull the authoritative standards for THIS section.
-  const { context: grounding, chunks } = await retrieveGrounding(
+  // RAG: multi-hop retrieval pulls authoritative standards for THIS section.
+  const { context: grounding, citations, hops } = await retrieveGrounding(
     SECTION_QUERY[sectionName] || `what makes a strong ${sectionName} section in a research proposal`,
-    { k: 3, preferTags: SECTION_TAGS[sectionName] || [] }
+    { k: 3, preferTags: SECTION_TAGS[sectionName] || [], maxHops: 2 }
   );
 
   const groundingBlock = grounding
-    ? `\n\nGROUNDING — authoritative standards you MUST apply and cite by [number]:\n${grounding}`
+    ? `\n\nGROUNDING — authoritative standards you MUST apply. Cite by [RAG-N] tag when you use a standard:\n${grounding}`
     : '';
 
   // Stage 2: per-section special guidance for IM/BI
@@ -152,7 +152,8 @@ export async function draftSection(learnerId, sectionName) {
     critique,
     defense_question: result.defense_question || '',
     message: mentorMessage,
-    grounded_in: chunks.map(c => ({ source: c.source, title: c.title }))
+    grounded_in: citations,
+    retrieval_hops: hops
   };
 }
 

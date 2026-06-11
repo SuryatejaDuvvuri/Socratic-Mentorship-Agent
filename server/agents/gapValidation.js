@@ -70,9 +70,9 @@ export async function validateGap(learnerId) {
     console.warn('[gapValidation] Search failed:', err.message);
   }
 
-  const { context: grounding } = await retrieveGrounding(
+  const { context: grounding, citations } = await retrieveGrounding(
     'how to validate a research gap is genuinely open, novelty check against prior work',
-    { k: 3, preferTags: ['gap', 'novelty'] }
+    { k: 3, preferTags: ['gap', 'novelty'], maxHops: 2 }
   );
 
   const papersBlock = found.length
@@ -89,7 +89,7 @@ export async function validateGap(learnerId) {
       `Why it matters: ${hypothesis.why_it_matters || ''}\n\n` +
       `Papers student already read:\n${alreadyRead.map((p, i) => `${i + 1}. "${p.title}"`).join('\n') || '(none)'}\n\n` +
       `Additional papers retrieved for novelty check:\n${papersBlock}\n\n` +
-      (grounding ? `Standards for a defensible gap:\n${grounding}` : ''),
+      (grounding ? `Standards for a defensible gap (cite by [RAG-N] tag):\n${grounding}` : ''),
     temperature: 0.2,
     requiredKeys: ['novelty_verdict', 'quality_ready', 'recommendation']
   });
