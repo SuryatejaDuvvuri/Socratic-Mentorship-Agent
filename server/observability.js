@@ -66,6 +66,10 @@ export function tracePaperImport(learnerId, { title, chunks, pages }) {
   trace(learnerId, 'literature', 'paper_imported', { title, chunks, pages });
 }
 
+export function traceAssistantRun(learnerId, { question, steps, toolsUsed, cacheHits, durationMs }) {
+  trace(learnerId || 'anonymous', 'assistant', 'assistant_run', { question, steps, toolsUsed, cacheHits, durationMs });
+}
+
 // ── Query helpers ─────────────────────────────────────────────────────────────
 
 export function getTraces(learnerId, { eventType = null, limit = 50 } = {}) {
@@ -97,7 +101,23 @@ export function getSessionSummary(learnerId) {
   const arxivSearches = traces.filter(t => t.type === 'arxiv_search');
   const rateLimitedSearches = arxivSearches.filter(t => t.data.rateLimited).length;
 
+  // Assistant (ReAct) workflow metrics: how good/bad is the agentic layer?
+  const assistantRuns = traces.filter(t => t.type === 'assistant_run');
+  const assistantMetrics = assistantRuns.length
+    ? {
+        runs: assistantRuns.length,
+        avgSteps: +(assistantRuns.reduce((s, t) => s + (t.data.steps || 0), 0) / assistantRuns.length).toFixed(1),
+        avgDurationMs: Math.round(assistantRuns.reduce((s, t) => s + (t.data.durationMs || 0), 0) / assistantRuns.length),
+        toolUsage: assistantRuns.flatMap(t => t.data.toolsUsed || []).reduce((acc, tool) => {
+          acc[tool] = (acc[tool] || 0) + 1;
+          return acc;
+        }, {}),
+        definitionCacheHits: assistantRuns.reduce((s, t) => s + (t.data.cacheHits || 0), 0)
+      }
+    : null;
+
   return {
+    assistant: assistantMetrics,
     deepeningIterations,
     gateRejections,
     rubricScoreTrajectory: rubricScores,

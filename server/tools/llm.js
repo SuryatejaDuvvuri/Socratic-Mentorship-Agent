@@ -131,21 +131,37 @@ async function callCerebras({ systemPrompt, history = [], userMessage, temperatu
     ...(forceJson ? { response_format: { type: 'json_object' } } : {})
   };
 
-  const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
+  // Retry on transient failures (429 rate limit, 5xx, "high traffic").
+  // Groq already had this; Cerebras threw on first failure — under load
+  // spikes one flaky response would kill a whole agent run.
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch('https://api.cerebras.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || data?.error?.message || `Cerebras API error ${res.status}`);
+    const data = await res.json().catch(() => ({}));
+    const errMsg = data?.message || data?.error?.message || '';
+    const transient = res.status === 429 || res.status >= 500 || /high traffic|overloaded|try again/i.test(errMsg);
 
-  const text = data?.choices?.[0]?.message?.content || '';
-  if (!text) throw new Error('Cerebras returned empty response');
-  return text;
+    if (!res.ok && transient && attempt < MAX_RETRIES) {
+      // RPM-window errors need to wait out the minute, not 2s.
+      const waitMs = /per minute/i.test(errMsg) ? 20_000 * attempt : 2000 * attempt;
+      console.warn(`[cerebras] transient error (${res.status}): ${errMsg.slice(0, 80)} — retrying in ${waitMs}ms (${attempt}/${MAX_RETRIES})`);
+      await sleep(waitMs);
+      continue;
+    }
+    if (!res.ok) throw new Error(errMsg || `Cerebras API error ${res.status}`);
+
+    const text = data?.choices?.[0]?.message?.content || '';
+    if (!text) throw new Error('Cerebras returned empty response');
+    return text;
+  }
 }
 
 // ── SambaNova (OpenAI-compatible, free Llama 405B) ────────────────────────────

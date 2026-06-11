@@ -21,6 +21,7 @@ import { getTraces, getSessionSummary } from './observability.js';
 import { getStory, buildMentorContext } from './mentorPersona.js';
 import { generateLatex, generatePrintHtml } from './proposalExport.js';
 import { composeProposalLatex, repairProposalLatex } from './agents/proposalCompose.js';
+import { runAssistant } from './agents/researchAssistant.js';
 import { getDb } from './db.js';
 
 // Multer — memory storage for PDF uploads (no disk writes)
@@ -416,6 +417,29 @@ app.get('/api/mentor/story/:learnerId', (req, res) => {
     const story = getStory(req.params.learnerId);
     res.json({ moments: story });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Research Assistant (ReAct agent over tools) ────────────────────────────
+
+// POST /api/mentor/assistant — agentic Q&A: the agent decides whether to use
+// rag_search (distilled corpus facts), define_term (cached), or paper_search.
+app.post('/api/mentor/assistant', async (req, res) => {
+  try {
+    const { learnerId, question, allowedTools } = req.body || {};
+    if (!question || !String(question).trim()) {
+      return res.status(400).json({ error: 'question is required.' });
+    }
+    // Guardrail: question length cap — keeps tool inputs and prompts bounded.
+    const q = String(question).slice(0, 1000);
+    const result = await runAssistant(q, {
+      learnerId,
+      ...(Array.isArray(allowedTools) && allowedTools.length ? { allowedTools } : {})
+    });
+    res.json(result);
+  } catch (e) {
+    console.error('[assistant]', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── Observability ────────────────────────────────────────────────────────────
