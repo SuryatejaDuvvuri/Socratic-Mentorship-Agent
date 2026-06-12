@@ -30,51 +30,66 @@ OUTPUT: Return ONLY raw LaTeX source, starting with \\documentclass. No markdown
 
 FORMAT REQUIREMENTS (course rubric — follow exactly):
 - \\documentclass[11pt]{article} with \\usepackage[margin=1in]{geometry}
-- Add these spacing packages immediately after geometry (they are required — do NOT omit them):
+- The preamble MUST contain ALL of the following packages in this order (copy exactly):
+  \\usepackage{times}
+  \\usepackage{amsmath,amssymb}
+  \\usepackage{enumitem}
+  \\setlist{nosep,leftmargin=*}
+  \\usepackage{tikz}
+  \\usetikzlibrary{arrows.meta,positioning}
+  \\usepackage{hyperref}
   \\usepackage{titlesec}
-  \\titleformat{\\section}{\\normalfont\\large\\bfseries}{}{0em}{}
-  \\titlespacing*{\\section}{0pt}{0.8ex plus 0.2ex}{0.4ex plus 0.1ex}
-  \\titlespacing*{\\subsection}{0pt}{0.6ex plus 0.1ex}{0.3ex plus 0.1ex}
-  \\setlength{\\parskip}{0pt}
-  \\setlength{\\parsep}{0pt}
-- HARD LIMIT: the body (everything before References) must fit in 3 pages. This is graded. Budget strictly:
-  * Abstract ≤ 110 words; Introduction ≤ 200 words; Novelty ≤ 180 words (one compact sentence per cited paper)
-  * Goal+Hypotheses ≤ 130 words; Methods ≤ 320 words; Milestones ≤ 90 words (one line per milestone)
-  * Evaluation ≤ 140 words; Risks ≤ 90 words (3 risks max, one line each); Resources ≤ 50 words
-  * Use \\setlist{nosep} and avoid blank-line padding. Prefer compact run-in lists over tall bullet stacks.
-  * DO NOT add blank lines between paragraphs or list items. LaTeX inserts spacing automatically.
-- Required structure, in order:
-  1. Title (specific and descriptive, not "Research Proposal: <domain>")
-  2. Abstract (4-6 sentences: problem, gap, approach, expected contribution)
-  3. Keywords (one line, 4-6 terms)
-  4. Introduction and Motivation (concrete problem, stakeholder, why current solutions fail; weave in intellectual merit and broader impacts)
-  5. Novelty and Relation to Prior Work (cite the provided papers by number [1], [2]...; state precisely what each does and what remains open)
-  6. Project Goal and Hypotheses (the gap as a goal statement; H1/H2/H3 as a compact list)
-  7. Methods: Technical Approach and Agent Workflow (concrete stages, inputs, outputs, named tools/models, revision loop)
-  8. Figure (see FIGURE RULES below) — referenced from the Methods text as Figure~\\ref{fig:workflow}
-  9. Expected Results and Research Milestones (timeline with week ranges)
-  10. Evaluation Plan (named metrics, baselines, test scenarios, success criteria)
-  11. Risks and Mitigation (specific risks, each with a mitigation)
-  12. Resources (compute, data, tools, budget note)
-  13. References (\\begin{thebibliography} — ONLY the provided papers; never invent citations or authors. If authors are unknown, format as: \\bibitem{refN} \\textit{Title} (year). \\url{...} — no "Unknown" placeholder. Clean obviously malformed titles, e.g. strip "[PDF]" prefixes.)
+  \\titlespacing*{\\section}{0pt}{6pt}{3pt}
+  \\setlength{\\parskip}{3pt}
+  \\setlength{\\parindent}{0pt}
+- HARD LIMIT: the body (everything before References) must fit in 3 pages. Budget strictly:
+  * Abstract <= 110 words; Introduction <= 200 words; Novelty <= 180 words (one compact sentence per cited paper)
+  * Goal+Hypotheses <= 130 words; Methods <= 320 words; Milestones <= 90 words (one line per milestone)
+  * Evaluation <= 140 words; Risks <= 90 words (3 risks max); Resources <= 50 words
+  * Prefer compact run-in lists over tall bullet stacks. Do NOT add blank lines between list items.
+- Required sections, in order, using \\section*{...} headings:
+  1. Title (specific and descriptive — use a centered \\begin{center}{\\large\\bfseries ...}\\end{center} block, no \\maketitle)
+  2. Abstract (4-6 sentences: problem, gap, approach, expected contribution) — use \\noindent\\textbf{Abstract.}~...
+  3. Keywords — use \\noindent\\textbf{Keywords:}~...
+  4. \\section*{1.~Introduction: Motivation, Gap, and Prior Work}
+  5. \\section*{2.~Project Goal and Hypotheses}
+  6. \\section*{3.~Methods: Technical Approach and Agent Workflow}
+  7. Figure (inside the Methods section — see FIGURE RULES)
+  8. \\section*{4.~Expected Results and Research Milestones}
+  9. \\section*{5.~Evaluation Plan}
+  10. \\section*{6.~Risks and Mitigation}
+  11. \\section*{7.~Resources, Tools, Budget, and Release Plan}
+  12. References (\\begin{thebibliography}{9} ... \\end{thebibliography})
 
-FIGURE RULES (7 rubric points depend on this):
-- Include exactly one figure: a workflow/architecture diagram of the proposed method.
-- Build it natively in LaTeX with TikZ. Use ONLY: \\usepackage{tikz} with \\usetikzlibrary{arrows.meta, positioning}.
-- PAGE WIDTH CONSTRAINT: the text area is 6.5 inches (16.5 cm). The entire tikzpicture MUST fit within this width.
-  If you have more than 3 pipeline stages, use TWO ROWS (top row: stages 1-3, bottom row: stages 4-N) with a downward arrow connecting them.
-  For a single row, use at most 3-4 nodes with: node distance=0.9cm, text width=2.5cm, font=\\small.
-- Rectangle nodes with draw + rounded corners, -{Stealth} arrows. No decorations, no shadows, no custom colors.
-- Give it \\caption{} explaining what the reader should learn, and \\label{fig:workflow}.
-- The Methods text MUST reference and explain the figure.
+FIGURE RULES (7 rubric points — do not skip or simplify):
+- Include exactly one TikZ figure showing the proposed research pipeline.
+- The tikzpicture MUST compile with ONLY \\usepackage{tikz} and \\usetikzlibrary{arrows.meta,positioning}. No pgfplots, no external packages.
+- HORIZONTAL LAYOUT: place stages left-to-right in a single row. Use these exact TikZ settings:
+    node distance=0.55cm and 0.45cm,
+    box/.style={draw, rounded corners, text width=2.1cm, align=center, font=\\small, inner sep=4pt, minimum height=1.0cm}
+  Position nodes with: \\node[box, right=of prev] ...
+- PAGE WIDTH: a single row of 5 boxes at text width=2.1cm fits within 6.5in. Do NOT use a vertical stack.
+- Include a dashed feedback arrow (bend right=35) from the last evaluation node back to an earlier node, labeled with a \\scriptsize description of what gets refined. This represents the revision loop.
+- Use [{\\Stealth}] arrow tips. No custom colors, no shadows.
+- \\caption{} must explain what the diagram shows and what the dashed arrow means.
+- The Methods text must say "Figure~\\ref{fig:workflow}" and describe what each stage does.
+
+REFERENCES RULES:
+- Use \\begin{thebibliography}{9} format with \\bibitem{refN} keys cited as ~\\cite{refN} in text.
+- Use the provided papers list. If a paper's title matches a well-known work, use the correct author list, venue, and arXiv ID even if the provided metadata is incomplete.
+- Never invent citations not grounded in the provided papers.
+- Format: Author(s). \\textit{Title.} Venue Year. \\url{...}
+- If authors are unknown, omit the author field; do not write "Unknown".
+- Strip "[PDF]", "[HTML]", or source-name suffixes from titles.
+- Do NOT cite the same arXiv paper twice under different bibitem keys.
 
 WRITING RULES:
-- Write as a forward-looking research proposal, NOT a course implementation report. The research timeline is independent of any course deadline.
-- Compile-safe LaTeX only: no minted, no shell-escape, no \\includegraphics, no external files, no custom fonts beyond \\usepackage{times}.
-- Escape special characters in prose (%, &, _, #, $).
-- Mark any claim not supported by the provided papers as an assumption ("We assume...").
-- Use the section drafts as raw material but REWRITE for coherence — consistent terminology, smooth transitions, no repetition between sections.
-- Unicode math symbols must be written as LaTeX ($\\geq$, $\\rightarrow$, etc.), never as raw characters.`;
+- Write as a forward-looking research proposal, NOT a course implementation report.
+- Compile-safe LaTeX only: no minted, no shell-escape, no \\includegraphics, no external files.
+- NO RAW UNICODE: every non-ASCII character must be a LaTeX command. Use --- not the Unicode em-dash, $\\geq$ not >=, $\\rightarrow$ not ->, $\\times$ not x, etc. This is the most common compile failure --- enforce it everywhere.
+- Escape %, &, _, #, $ when used as prose text.
+- Mark any unsupported claim as an assumption ("We assume...").
+- Rewrite section drafts for coherence --- consistent terminology, smooth transitions, no repetition.`;
 
 // In-memory cache: learnerId → { key, latex }
 const composeCache = new Map();

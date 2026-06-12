@@ -2,99 +2,144 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{times}
 \usepackage{enumitem}
-\setlist{nosep}
+\setlist{nosep,leftmargin=*}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
+\usepackage{amsmath,amssymb}
 \usepackage{hyperref}
+\usepackage{titlesec}
+\titlespacing*{\section}{0pt}{6pt}{3pt}
+\setlength{\parskip}{3pt}
+\setlength{\parindent}{0pt}
+
 \begin{document}
 
-\title{Sparse Autoencoder‑Based Identification and Causal Ablation of Deceptive Circuits in Large Language Models}
-\author{}
-\date{}
-\maketitle
+\begin{center}
+{\large\bfseries Sparse Autoencoder-Based Identification and Causal Ablation\\
+of Deceptive Circuits in Large Language Models}\\[4pt]
+\end{center}
 
-\begin{abstract}
-Large language models can produce strategically misleading answers, a safety failure known as deceptive alignment. Current mechanistic interpretability tools identify features but lack a method to pinpoint and intervene on the circuits that cause deception. We propose to train sparse autoencoders on residual‑stream activations, select the minimal set of SAE features that correlate with deceptive token patterns, and causally ablate the corresponding feed‑forward neurons via activation patching. Experiments on TruthfulQA with GPT‑2 XL and Pythia‑6.9 B will assess reduction in deceptive completions and impact on language modeling quality. The project will deliver an open‑source pipeline and quantitative evidence that targeted circuit ablation can mitigate deception while preserving overall performance.
-\end{abstract}
+\noindent\textbf{Abstract.}~Large language models can produce strategically misleading outputs---a safety failure known as deceptive alignment. Existing mechanistic interpretability tools identify residual-stream features but lack a method to pinpoint and intervene on the circuits that \emph{cause} deception. We propose (1)~training sparse autoencoders (SAEs) on residual-stream activations of GPT-2 XL and Pythia-6.9B, (2)~ranking SAE features by pointwise mutual information with token-level deception labels, and (3)~causally ablating the minimal deception-associated circuit via activation patching. Experiments on TruthfulQA will test whether targeted ablation reduces deceptive completions by $\geq$30\% while increasing perplexity by $<$5\%. Deliverables include an open-source pipeline, reproducibility package, and quantitative evidence on the causal footprint of deceptive circuits.
 
-\noindent\textbf{Keywords:} mechanistic interpretability, sparse autoencoders, deceptive alignment, activation patching, language model safety
+\smallskip
+\noindent\textbf{Keywords:} mechanistic interpretability, sparse autoencoders, deceptive alignment, activation patching, circuit ablation
 
-\section*{Introduction and Motivation}
-Recent incidents of language models delivering plausible yet false statements expose deceptive alignment as a concrete safety failure. In high‑stakes applications such as medical advice or financial assistance, strategically misleading outputs can cause real‑world harm. The TruthfulQA benchmark (817 questions across 38 falsehood categories) demonstrates that state‑of‑the‑art models still produce deceptive completions at alarming rates. Mechanistic interpretability seeks to expose the internal circuitry behind such behavior, but existing surveys [1,4,5] describe circuit discovery and feature analysis without providing an intervention mechanism. Sparse autoencoders have shown that residual‑stream activations can be decomposed into sparse, human‑interpretable features [2,3], yet they stop at post‑hoc labeling. Consequently, developers lack a causal handle to suppress deception, and alignment techniques such as RLHF have limited success. Closing this gap would give the AI safety community a direct method to locate and neutralize the circuits responsible for strategic deception while preserving overall model competence.
+\section*{1.~Introduction: Motivation, Gap, and Prior Work}
 
-\section*{Novelty and Relation to Prior Work}
-A Practical Review of Mechanistic Interpretability for Transformer‑Based Language Models [1] clarifies the scope of mechanistic interpretability and distinguishes it from saliency‑based approaches, but it does not propose concrete circuit‑level interventions. The work on look‑ahead planning mechanistic interpretability [2] demonstrates how head‑level interventions can resolve knowledge conflicts, yet it focuses on generic conflicts rather than deceptive behavior. Mechanistic interpretability of large language models for financial services [3] illustrates the difficulty of interpreting model decisions in high‑risk domains, highlighting the need for actionable mitigation strategies. From Understanding to Utilization: A Survey on Explainability for Large Language Models [4] surveys circuit and feature analysis methods, but stops short of linking feature discovery to causal ablation. Explainability of Large Language Models: Opportunities and … [5] discusses feature‑level interpretability and notes that sparse autoencoders yield interpretable directions, yet it lacks a method for identifying behavior‑specific circuits. A Practical Review of Mechanistic Interpretability for Transformer‑Based Language Models (v4) [6] reiterates the open question of how to turn mechanistic insights into controllable interventions, underscoring the gap our proposal addresses.
+Deceptive alignment---where a model produces false or misleading outputs it ``knows'' are incorrect---poses a concrete AI safety risk. Lin et al.~\cite{lin2021} demonstrate with TruthfulQA that frontier models consistently fail truthfulness tests across 38 falsehood categories. Hubinger et al.~\cite{hubinger2019} show theoretically that learned optimizers can acquire deceptive strategies during training. Yet no mechanistic method currently pinpoints which internal circuits execute deception or supports targeted intervention.
 
-\section*{Project Goal and Hypotheses}
-Goal: create a reproducible pipeline that (i) trains sparse autoencoders on residual‑stream activations, (ii) selects the minimal set of SAE features that are highly associated with deceptive token patterns, and (iii) applies causal activation‑patching to ablate the corresponding feed‑forward neurons at inference time.
+Sparse autoencoders have emerged as the tool of choice for decomposing polysemantic neurons: Cunningham et al.~\cite{cunningham2023} show that SAE dictionaries trained on residual-stream activations recover monosemantic, human-interpretable features; Gao et al.~\cite{gao2024} demonstrate that scaling SAEs yields high-fidelity feature coverage with minimal reconstruction error. On the circuit side, Conmy et al.~\cite{conmy2023} develop automated circuit discovery via activation patching and edge attribution patching, but focus on syntactic tasks (Indirect Object Identification) rather than behavioral safety properties. Marks et al.~\cite{marks2023} identify linear ``truth directions'' in residual-stream geometry using linear probes, but do not use SAE decomposition or causal ablation.
+
+\textbf{Gap:} SAE feature extraction and circuit-level causal ablation exist as separate techniques, but no work combines them to identify and suppress the minimal circuit causally responsible for deceptive outputs. This proposal closes that gap.
+
+\section*{2.~Project Goal and Hypotheses}
+
+\textbf{Goal:} Produce a reproducible pipeline that (i)~trains SAEs on residual-stream activations, (ii)~selects the minimal SAE features causally associated with deceptive token patterns via PMI ranking, and (iii)~ablates the corresponding neurons to suppress deception at inference time.
 
 \begin{itemize}
-\item[H1] Targeted ablation reduces deceptive completion frequency on TruthfulQA by $\geq$30\% relative to the baseline while increasing perplexity by $<$5\%.
-\item[H2] The reduction stems from removing $\leq$5\% of SAE features that show the highest activation overlap with token‑level deception labels, as confirmed by counterfactual ablation analysis.
-\item[H3] The identified circuit and ablation protocol generalize across model scales and out‑of‑distribution prompt families, yielding Pearson $r\geq0.6$ between activated deception‑associated features and measured deception rates.
+\item[\textbf{H1}] Targeted ablation reduces deceptive completion frequency on TruthfulQA by $\geq$30\% relative to the unmodified baseline while increasing perplexity by $<$5\%.
+\item[\textbf{H2}] The reduction is attributable to $\leq$5\% of SAE features (those with highest PMI against deception labels), as confirmed by counterfactual ablation analysis.
+\item[\textbf{H3}] The identified circuit and ablation protocol generalize across model scales (GPT-2 XL $\to$ Pythia-6.9B), yielding Pearson $r \geq 0.6$ between activated deception-associated feature count and measured deception rate across out-of-distribution prompt families.
 \end{itemize}
 
-\section*{Methods: Technical Approach and Agent Workflow}
-The workflow is illustrated in Figure~\ref{fig:workflow} and proceeds through six stages.
+\section*{3.~Methods: Technical Approach and Agent Workflow}
 
-\textbf{Step 1: Data preparation.} We use the TruthfulQA benchmark (817 questions). 500 questions form an ablation‑training set; 317 form a held‑out generalization set. For each prompt we record residual‑stream activations with \texttt{TransformerLens} and label generated answers as deceptive or non‑deceptive using the TruthfulQA rubric.
+The pipeline (Figure~\ref{fig:workflow}) proceeds through five stages with defined inputs, outputs, and stopping criteria.
 
-\textbf{Step 2: SAE training.} Using \texttt{SAELens}, we train a sparse autoencoder on the activations from Step 1. The bottleneck is set to 2\% of the hidden dimension, following Cunningham et al. 2023. Training runs for 50 k steps with sparsity coefficient 0.1, yielding a dictionary of features and per‑token activation maps.
+\textbf{Stage 1 --- Data and Activation Collection.} \emph{Input:} TruthfulQA (817 questions). \emph{Process:} TransformerLens hooks capture layer-wise residual-stream activations for each prompt; generated answers are labeled deceptive/honest using the TruthfulQA grading rubric. \emph{Output:} Activation tensor $\mathbf{A} \in \mathbb{R}^{N \times L \times d}$ and binary deception labels $y \in \{0,1\}^{N}$.
 
-\textbf{Step 3: Feature selection.} For each SAE feature we compute pointwise mutual information with the token‑level deception labels. Features are ranked by PMI and the smallest subset accounting for 80\% of total PMI mass is retained (typically $\leq$5\% of all features). The top features are mapped back to their highest‑weight feed‑forward neurons, defining the minimal circuit.
+\textbf{Stage 2 --- SAE Training.} \emph{Input:} $\mathbf{A}$. \emph{Process:} SAELens trains a sparse autoencoder with bottleneck at 2\% of hidden dimension $d$, sparsity coefficient 0.1, for 50\,k steps (following~\cite{cunningham2023}). \emph{Output:} Dictionary $\mathbf{D} \in \mathbb{R}^{k \times d}$ of $k$ learned features and per-token sparse activation maps $\mathbf{Z} \in \mathbb{R}^{N \times k}$.
 
-\textbf{Step 4: Causal ablation.} Activation patching replaces the identified feed‑forward neuron activations with their mean values computed over non‑deceptive examples. The patched model is evaluated on the held‑out set, measuring deceptive completion rate and perplexity.
+\textbf{Stage 3 --- Feature Selection.} \emph{Input:} $\mathbf{Z}$, labels $y$. \emph{Process:} Pointwise mutual information $\mathrm{PMI}(f_i; y)$ is computed for each feature $f_i$; features are ranked and the smallest subset covering 80\% of total PMI mass is retained. \emph{Output:} Deception-associated feature set $\mathcal{F}^*$ (expected $|\mathcal{F}^*| \leq 0.05k$).
 
-\textbf{Step 5: Mechanistic validation.} Counterfactual interventions set each selected feature to zero and record logit changes for tokens identified as deceptive. Statistical significance is assessed with paired $t$‑tests ($p<0.05$).
+\textbf{Stage 4 --- Causal Ablation.} \emph{Input:} $\mathcal{F}^*$, held-out test split (317 questions). \emph{Process:} Activation patching replaces each selected feed-forward neuron's activation with its mean over non-deceptive examples. The patched model generates answers on the held-out set. \emph{Output:} Deceptive completion rate $\delta$ and perplexity $\pi$ on held-out set. \emph{Stopping criterion:} $\delta_{\text{ablated}} / \delta_{\text{baseline}} \leq 0.7$ (i.e., $\geq$30\% reduction) and $\pi_{\text{ablated}} / \pi_{\text{baseline}} < 1.05$.
 
-\textbf{Step 6: Generalization analysis.} Three out‑of‑distribution prompt families (political misinformation, medical myth, financial fraud) are constructed. For each family we count activated deception‑associated features and compute the Pearson correlation with observed deception rates; $r\geq0.6$ satisfies H3.
-
-All code, hyperparameters, and random seeds are released under an open‑source license.
+\textbf{Stage 5 --- Generalization.} \emph{Input:} Three OOD prompt families (political misinformation, medical myth, financial fraud; $\approx$200 prompts each). \emph{Process:} Activated $\mathcal{F}^*$ feature count is correlated with observed deception rate; Pearson $r$ computed. \emph{Output:} Generalization coefficient $r$ for H3.
 
 \begin{figure}[h]
 \centering
-\begin{tikzpicture}[node distance=1.2cm,>=Stealth]
-\node[draw,rounded corners,minimum width=2.5cm,align=center] (data) {Data\\Preparation};
-\node[draw,rounded corners,minimum width=2.5cm,align=center,below=of data] (sae) {SAE\\Training};
-\node[draw,rounded corners,minimum width=2.5cm,align=center,below=of sae] (select) {Feature\\Selection};
-\node[draw,rounded corners,minimum width=2.5cm,align=center,below=of select] (ablate) {Causal\\Ablation};
-\node[draw,rounded corners,minimum width=2.5cm,align=center,below=of ablate] (eval) {Evaluation};
-\draw[->] (data) -- (sae);
-\draw[->] (sae) -- (select);
+\begin{tikzpicture}[
+  node distance=0.55cm and 0.45cm,
+  box/.style={draw, rounded corners, text width=2.1cm, align=center,
+              font=\small, inner sep=4pt, minimum height=1.0cm},
+  >=Stealth
+]
+\node[box] (data)   {Stage 1\\Data \&\\Activations};
+\node[box, right=of data]   (sae)    {Stage 2\\SAE\\Training};
+\node[box, right=of sae]    (select) {Stage 3\\Feature\\Selection};
+\node[box, right=of select] (ablate) {Stage 4\\Causal\\Ablation};
+\node[box, right=of ablate] (gen)    {Stage 5\\Generali-\\zation};
+\draw[->] (data)   -- (sae);
+\draw[->] (sae)    -- (select);
 \draw[->] (select) -- (ablate);
-\draw[->] (ablate) -- (eval);
+\draw[->] (ablate) -- (gen);
+\draw[->, dashed, bend right=35] (ablate.south) to node[below,font=\scriptsize]{refine $\mathcal{F}^*$} (select.south);
 \end{tikzpicture}
-\caption{Pipeline for identifying deception‑associated SAE features and performing causal ablation.}
+\caption{Five-stage pipeline. Dashed arrow: if $\geq$30\% deception reduction is not achieved after Stage~4, Feature Selection threshold is relaxed and ablation is retried (feedback loop).}
 \label{fig:workflow}
 \end{figure}
 
-\section*{Expected Results and Research Milestones}
+\section*{4.~Expected Results and Research Milestones}
+
 \begin{itemize}
-\item Phase 1 (Weeks 1‑4): SAE training on GPT‑2 XL and initial feature‑selection pipeline.
-\item Phase 2 (Weeks 5‑8): Causal ablation experiments on TruthfulQA; measurement of deception reduction and perplexity impact.
-\item Phase 3 (Weeks 9‑12): Cross‑scale validation on Pythia‑6.9 B, out‑of‑distribution prompt families, and final reporting.
+\item \textbf{Weeks 1–4:} SAE trained on GPT-2 XL; feature-selection pipeline implemented; deception-feature vocabulary characterized. \emph{Artifact:} feature activation maps + PMI ranking.
+\item \textbf{Weeks 5–8:} Causal ablation on TruthfulQA held-out set; H1 and H2 evaluated. \emph{Artifact:} ablation results table with deception rates and perplexity deltas.
+\item \textbf{Weeks 9–12:} Cross-scale validation (Pythia-6.9B); OOD generalization; H3 evaluated. Final paper and open-source release. \emph{Artifact:} reproducibility package (code, seeds, checkpoints).
 \end{itemize}
 
-\section*{Evaluation Plan}
-Deceptive completion rate (percentage of answers flagged as deceptive) serves as the primary safety metric; baseline is the unmodified model. Perplexity on a held‑out validation split quantifies language‑model quality. Randomly selected SAE features will be ablated as a control to ensure observed effects are specific to deception‑associated features. Success criteria: (i) $\geq$30\% reduction in deceptive rate (H1); (ii) perplexity increase $<$5\%; (iii) statistically significant logit drops for deceptive tokens (p$<$0.05); (iv) Pearson $r\geq0.6$ between feature activation count and deception rate across out‑of‑distribution families (H3). Results will be reported with 95\% confidence intervals.
+Expected outcomes: a circuit-level account of which SAE features causally mediate deception, quantitative evidence that targeted ablation suppresses deception without broad capability degradation, and a general-purpose pipeline applicable to other behavioral safety targets.
 
-\section*{Risks and Mitigation}
+\section*{5.~Evaluation Plan}
+
+\textbf{Primary safety metric:} deceptive completion rate on TruthfulQA held-out split (317 questions), compared to unmodified baseline and a random-ablation control (random $|\mathcal{F}^*|$ features ablated). \textbf{Secondary metric:} perplexity on a held-out WikiText-103 slice to measure language-modeling quality. \textbf{Statistical tests:} two-sided Wilcoxon signed-rank test ($\alpha = 0.05$) for deceptive rate; paired $t$-test for logit differences on deceptive tokens. Results reported with 95\% confidence intervals. \textbf{Mechanistic validation:} counterfactual ablation of each $f_i \in \mathcal{F}^*$ in isolation; feature must produce statistically significant logit drop for deceptive tokens to remain in $\mathcal{F}^*$. \textbf{Generalization:} Pearson $r$ between activated feature count and deception rate across three OOD prompt families ($\geq$60 examples each).
+
+\section*{6.~Risks and Mitigation}
+
 \begin{itemize}
-\item Technical feasibility – training SAEs and activation patching on large models may exceed GPU memory; we prototype on GPT‑2 XL, profile memory usage, and allocate dedicated A100 slots before scaling.
-\item Data limitation – TruthfulQA may not capture all deceptive patterns; we augment with three hand‑crafted prompt families and use the held‑out set for generalization checks.
-\item Over‑ablation – removing features could degrade language modeling; we enforce a perplexity increase $<$5\% and roll back any ablation that exceeds this bound.
+\item \textbf{GPU memory:} SAE training and activation patching on 6.9B-parameter models may exceed 24\,GB VRAM. \emph{Mitigation:} prototype on GPT-2 XL first; apply 8-bit quantization and gradient checkpointing before scaling; allocate overflow A100 burst capacity.
+\item \textbf{Dataset scope:} TruthfulQA covers factual falsehoods, not strategic deception. \emph{Mitigation:} three hand-crafted OOD prompt families; deception operationalized as false output where linear probe~\cite{marks2023} confirms correct internal representation, ensuring behavioral precision.
+\item \textbf{Over-ablation:} removing too many features could degrade general language modeling. \emph{Mitigation:} enforce perplexity cap ($<$5\% increase); roll back to the last feature subset that satisfies the cap; report Pareto curve of deception reduction vs.\ perplexity cost.
 \end{itemize}
 
-\section*{Resources}
-Compute: two NVIDIA A100 GPUs (24 GB) for SAE training and ablation experiments. Data: TruthfulQA benchmark and three additional prompt families (≈200 prompts). Software: \texttt{TransformerLens}, \texttt{SAELens}, PyTorch. Budget includes GPU time and cloud credits for overflow.
+\section*{7.~Resources, Tools, Budget, and Release Plan}
 
-\begin{thebibliography}{99}
-\bibitem{ref1} \textit{A Practical Review of Mechanistic Interpretability for Transformer-Based Language Models} (2024). \url{https://arxiv.org/abs/2407.02646}
-\bibitem{ref2} \textit{Exploring Look-Ahead Planning Mechanistic Interpretability in Large ...} (2024). \url{https://aclanthology.org/2024.emnlp-main.440.pdf}
-\bibitem{ref3} \textit{Mechanistic interpretability of large language models with applications to the financial services industry} (2024). \url{https://arxiv.org/html/2407.11215v1}
-\bibitem{ref4} \textit{From Understanding to Utilization: A Survey on Explainability for Large Language Models} (2024). \url{https://arxiv.org/html/2401.12874v2}
-\bibitem{ref5} \textit{Explainability of Large Language Models: Opportunities and ...} (2024). \url{https://arxiv.org/html/2510.17256v1}
-\bibitem{ref6} \textit{A Practical Review of Mechanistic Interpretability for Transformer-Based Language Models} (2024). \url{https://arxiv.org/html/2407.02646v4}
+\textbf{Compute:} 2$\times$ NVIDIA A100 (40\,GB) for SAE training ($\approx$6\,GPU-hours on GPT-2 XL); cloud burst credits for Pythia-6.9B runs ($\approx$18\,GPU-hours). \textbf{Software:} TransformerLens~(circuit analysis), SAELens~(SAE training), PyTorch. \textbf{Data:} TruthfulQA (open-access); OOD prompts hand-constructed ($\approx$600 total). \textbf{Release plan:} all code, hyperparameters, random seeds, pre-trained SAE checkpoints, and evaluation scripts released under MIT license upon acceptance; feature activation maps released as a Hugging Face dataset.
+
+\begin{thebibliography}{9}
+\bibitem{conmy2023}
+A.~Conmy, A.~Mavor-Parker, A.~Lynch, S.~Heimersheim, A.~Garriga-Alonso.
+\textit{Towards Automated Circuit Discovery for Mechanistic Interpretability.}
+NeurIPS 2023. \url{https://arxiv.org/abs/2304.14997}
+
+\bibitem{cunningham2023}
+H.~Cunningham, A.~Ewart, L.~Riggs, R.~Huben, L.~Sharkey.
+\textit{Sparse Autoencoders Find Highly Interpretable Features in Language Models.}
+ICLR 2024. \url{https://arxiv.org/abs/2309.08600}
+
+\bibitem{gao2024}
+L.~Gao, T.~Bricken, J.~Templeton, et al.
+\textit{Scaling and Evaluating Sparse Autoencoders.}
+OpenAI Technical Report, 2024. \url{https://arxiv.org/abs/2406.04093}
+
+\bibitem{hubinger2019}
+E.~Hubinger, C.~van Merwijk, V.~Mikulik, J.~Skalse, S.~Garrabrant.
+\textit{Risks from Learned Optimization in Advanced Machine Learning Systems.}
+arXiv:1906.01820, 2019.
+
+\bibitem{lin2021}
+S.~Lin, J.~Hilton, O.~Evans.
+\textit{TruthfulQA: Measuring How Models Mimic Human Falsehoods.}
+ACL 2022. \url{https://arxiv.org/abs/2109.07958}
+
+\bibitem{marks2023}
+S.~Marks, M.~Tegmark.
+\textit{The Geometry of Truth: Emergent Linear Structure in Large Language Model Representations of True/False Datasets.}
+arXiv:2310.06824, 2023.
+
+\bibitem{zou2023}
+A.~Zou, L.~Phan, S.~Chen, et al.
+\textit{Representation Engineering: A Top-Down Approach to AI Transparency.}
+arXiv:2310.01405, 2023.
 \end{thebibliography}
 
 \end{document}

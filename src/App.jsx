@@ -234,17 +234,20 @@ export default function App() {
 
         // Restore concepts from intake
         if (state.intake?.concepts) {
-          setConcepts(state.intake.concepts);
-          // Extract which concepts were checked
+          let parsedConcepts = state.intake.concepts;
+          if (typeof parsedConcepts === 'string') {
+            try { parsedConcepts = JSON.parse(parsedConcepts); } catch { parsedConcepts = []; }
+          }
+          setConcepts(parsedConcepts);
+          // Extract which concepts were checked and restore conceptIndex
           const checked = [];
           for (const key in state.intake) {
             if (key.startsWith('concept:')) {
-              const conceptName = key.replace('concept:', '');
-              const result = state.intake[key];
-              checked.push({ name: conceptName, result });
+              checked.push({ name: key.replace('concept:', ''), result: state.intake[key] });
             }
           }
           setConceptsDone(checked);
+          setConceptIndex(checked.length);
         }
 
         setPhase('phase1');
@@ -287,7 +290,7 @@ export default function App() {
 
       // Identify prereq concepts
       log('Phase 1', `Identifying concepts for: ${domain}`);
-      const { concepts: c } = await post('/api/mentor/phase1/concepts', { domain });
+      const { concepts: c } = await post('/api/mentor/phase1/concepts', { learnerId: id, domain });
       setConcepts(c);
 
       // First Feynman turn
@@ -1193,7 +1196,7 @@ export default function App() {
                 {generatedFigure && (
                   <div style={{ marginTop: 10, padding: 10, background: '#1e1e1e', borderRadius: 4 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                      <span style={{ color: '#a8d8b9', fontSize: '0.78rem', fontFamily: 'monospace' }}>LaTeX TikZ — copy into your .tex file</span>
+                      <span style={{ color: '#a8d8b9', fontSize: '0.78rem', fontFamily: 'monospace' }}>TikZ preview — included automatically in PDF export</span>
                       <button
                         style={{ fontSize: '0.75rem', background: '#333', color: '#eee', border: 'none', borderRadius: 3, padding: '2px 8px', cursor: 'pointer' }}
                         onClick={() => navigator.clipboard.writeText(generatedFigure.tikz_code)}
@@ -1202,11 +1205,6 @@ export default function App() {
                     <pre style={{ color: '#e8e8e8', fontSize: '0.72rem', whiteSpace: 'pre-wrap', margin: 0, maxHeight: 300, overflow: 'auto' }}>
                       {generatedFigure.tikz_code}
                     </pre>
-                    {generatedFigure.preamble_packages?.length > 0 && (
-                      <p style={{ color: '#aaa', fontSize: '0.72rem', marginTop: 6 }}>
-                        Add to preamble: {generatedFigure.preamble_packages.join(', ')}
-                      </p>
-                    )}
                   </div>
                 )}
               </div>
@@ -1324,6 +1322,19 @@ export default function App() {
         {/* ── Phase 4: Adversarial Review + Rubric ── */}
         {phase === 'phase4' && (
           <div className="phase-panel">
+
+            {/* Export bar — always visible on Phase 4 */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+              <button className="secondary" onClick={() => window.open(`http://localhost:8787/api/mentor/export/pdf/${learnerId}`, '_blank')}>
+                <FileText size={14} /> Export PDF
+              </button>
+              <button className="secondary" onClick={() => downloadLatex(learnerId)}>
+                <Download size={14} /> Download .tex
+              </button>
+              <button className="secondary" onClick={() => setPhase('phase3')}>
+                ← Back to Draft
+              </button>
+            </div>
 
             {/* Adversarial Review Panel */}
             {adversarialReview && (
@@ -1506,7 +1517,11 @@ async function post(url, body) {
 
 async function get(url) {
   const res = await fetch(url);
-  const data = await res.json();
+  const text = await res.text();
+  if (!text) throw new Error(`Empty response from ${url} (status ${res.status})`);
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 100)}`); }
   if (!res.ok) throw new Error(data.detail || data.error || 'Request failed');
   return data;
 }

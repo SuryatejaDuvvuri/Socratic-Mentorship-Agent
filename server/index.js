@@ -4,7 +4,7 @@ import express from 'express';
 import multer from 'multer';
 import { proposalLatexToPdf } from './pdfExport.js';
 import { answerAgentQuestion, generateProposal, startAgentSession } from './proposalGenerator.js';
-import { createLearner, getLearnerState } from './learnerMemory.js';
+import { createLearner, getLearnerState, saveIntakeField, getIntake } from './learnerMemory.js';
 import { identifyConcepts, domainReadinessTurn } from './agents/domainReadiness.js';
 import { fetchAndSummarizePapers, literatureDiscoveryTurn } from './agents/literatureDiscovery.js';
 import { draftSection, draftAllSections, draftRevisionTurn } from './agents/proposalDraft.js';
@@ -94,9 +94,13 @@ app.get('/api/mentor/session/:learnerId', (req, res) => {
 // POST /api/mentor/phase1/concepts — identify prereq concepts for a domain
 app.post('/api/mentor/phase1/concepts', async (req, res) => {
   try {
-    const { domain } = req.body || {};
+    const { learnerId, domain } = req.body || {};
     if (!domain) return res.status(400).json({ error: 'domain is required.' });
     const concepts = await identifyConcepts(domain);
+    // Persist so the turn endpoint can reload them without depending on frontend state
+    if (learnerId) {
+      saveIntakeField(learnerId, 'concepts', JSON.stringify(concepts), 0);
+    }
     res.json({ concepts });
   } catch (e) {
     console.error('[phase1/concepts]', e);
@@ -107,9 +111,19 @@ app.post('/api/mentor/phase1/concepts', async (req, res) => {
 // POST /api/mentor/phase1/turn — one turn of Feynman Q&A
 app.post('/api/mentor/phase1/turn', async (req, res) => {
   try {
-    const { learnerId, message, turn = 0, concepts = [], conceptIndex = 0 } = req.body || {};
+    const { learnerId, message, turn = 0, concepts: clientConcepts = [], conceptIndex = 0 } = req.body || {};
     if (!learnerId) return res.status(400).json({ error: 'learnerId is required.' });
     if (!message) return res.status(400).json({ error: 'message is required.' });
+
+    // Load concepts from DB if the client didn't send them (page refresh / resume)
+    let concepts = clientConcepts;
+    if (!concepts.length) {
+      const intake = getIntake(learnerId);
+      if (intake.concepts) {
+        try { concepts = JSON.parse(intake.concepts); } catch { concepts = []; }
+      }
+    }
+
     res.json(await domainReadinessTurn(learnerId, message, turn, concepts, conceptIndex));
   } catch (e) {
     console.error('[phase1/turn]', e);

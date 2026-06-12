@@ -255,7 +255,21 @@ async function callLLMJsonWithProvider(callFn, opts) {
 
   if (opts.requiredKeys?.length) {
     const missing = opts.requiredKeys.filter(k => !(k in parsed));
-    if (missing.length) throw new Error(`LLM JSON missing required keys: ${missing.join(', ')}`);
+    if (missing.length) {
+      console.warn(`[llm] JSON missing required keys: ${missing.join(', ')} — retrying`);
+      const correctionMessage =
+        `Your previous response was missing required fields: ${missing.join(', ')}. ` +
+        `Return ONLY a raw JSON object that includes ALL of these fields: ${opts.requiredKeys.join(', ')}. ` +
+        `No prose, no markdown.\n\nOriginal message: ${opts.userMessage}`;
+      try {
+        const retryText = await callFn({ ...opts, userMessage: correctionMessage, history: [], temperature: 0.1, forceJson: true });
+        parsed = parseJson(retryText);
+        const stillMissing = opts.requiredKeys.filter(k => !(k in parsed));
+        if (stillMissing.length) throw new Error(`LLM JSON missing required keys after retry: ${stillMissing.join(', ')}`);
+      } catch (retryErr) {
+        throw new Error(retryErr.message);
+      }
+    }
   }
 
   if (!parsed || typeof parsed !== 'object') throw new Error('LLM returned empty or non-object JSON');

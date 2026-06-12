@@ -91,6 +91,19 @@ export async function domainReadinessTurn(learnerId, userMessage, turn, concepts
   }
 
   // Subsequent turns: evaluate the answer and move to next concept
+  // If conceptIndex is out of bounds, we've already evaluated all concepts
+  if (conceptIndex >= concepts.length) {
+    const allChecked = concepts.map(c => c.name);
+    return {
+      message: "You've already demonstrated understanding of all foundational concepts. Ready for Phase 2!",
+      concept_being_checked: null,
+      concept_result: null,
+      concepts_checked: allChecked,
+      ready: true,
+      readiness_summary: 'All concepts checked. Ready to proceed.'
+    };
+  }
+
   const currentConcept = concepts[conceptIndex];
   if (!currentConcept) {
     throw new Error('Invalid concept index');
